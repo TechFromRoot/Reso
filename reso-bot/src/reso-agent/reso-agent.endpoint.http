@@ -1,0 +1,6 @@
+POST http://localhost:3000/reso-agent
+Content-Type: application/json
+
+{
+    "prompt": "Swap 0.005 sol to usdt"
+}
