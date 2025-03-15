@@ -4,6 +4,7 @@ import { firstValueFrom } from 'rxjs';
 import { Connection, PublicKey, Keypair, Transaction, VersionedMessage, VersionedTransaction } from '@solana/web3.js';
 import bs58 from 'bs58';
 import { getOrCreateAssociatedTokenAccount } from '@solana/spl-token';
+const base64 = require("buffer").Buffer;
 
 @Injectable()
 export class ResoAgentService {
@@ -51,7 +52,7 @@ export class ResoAgentService {
                 commitment: 'confirmed',
             });
 
-            const account = await getOrCreateAssociatedTokenAccount(
+            await getOrCreateAssociatedTokenAccount(
                 connection,
                 userAccount,
                 new PublicKey(inputMint),
@@ -67,33 +68,12 @@ export class ResoAgentService {
                         computeUnitPriceMicroLamports: "100",
                         swapResponse: swapCompute.data,
                         txVersion,
-                        wrapSol: false,
-                        unwrapSol: true,
+                        wrapSol: true,
+                        unwrapSol: false,
                         outputAccount: userAddress
                     }
                 )
             );
-            console.log(swapTrx.data.data[0].transaction);
-
-            //Create a new Transaction
-            // const transaction = new Transaction();
-
-            // Add all instructions from the array
-            // transaction.add(...swapTrx.data.data);
-
-            // // Set recent blockhash and fee payer
-            // const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
-            // transaction.recentBlockhash = blockhash;
-            // transaction.feePayer = userAddress;
-
-            // // console.log(transaction)
-            // // Sign the transaction with the private key
-            // transaction.sign(userAccount);
-
-            // // Send the signed transaction
-            // const signature = await connection.sendRawTransaction(
-            //     transaction.serialize(),
-            // );
 
             // Decode the base64 transaction
             const txBuffer = Buffer.from(swapTrx.data.data[0].transaction, "base64");
@@ -125,7 +105,7 @@ export class ResoAgentService {
                 throw new Error('Transaction failed');
             }
 
-            return `https://solscan.io/tx/${signature}`;
+            return `https://explorer.sonic.game/tx/${signature}?cluster=mainnet-alpha`;
         } catch (error) {
             console.error('Error in swapToken:', error);
         }
