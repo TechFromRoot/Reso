@@ -71,7 +71,7 @@ export class WalletService {
     return { json: encryptedWallet };
   };
 
-  decryptSolanaWallet = async (
+  decryptSVMWallet = async (
     password: string,
     encryptedWallet: string,
   ): Promise<Record<string, any>> => {
