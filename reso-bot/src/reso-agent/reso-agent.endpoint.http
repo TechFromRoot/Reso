@@ -4,3 +4,16 @@ Content-Type: application/json
 {
     "prompt": "Swap 0.005 sol to usdt"
 }
+
+
+
+POST http://localhost:3000/reso-agent/create-token
+Content-Type: application/json
+
+{
+    "name": "test",
+    "uri": "http://localhost:3000/reso-agent",
+    "symbol": "tst",
+    "decimals": 9,
+    "initialSupply": 1000000
+}

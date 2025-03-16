@@ -4,6 +4,7 @@ import { firstValueFrom } from 'rxjs';
 import { Connection, PublicKey, Keypair, Transaction, VersionedMessage, VersionedTransaction } from '@solana/web3.js';
 import bs58 from 'bs58';
 import { getOrCreateAssociatedTokenAccount } from '@solana/spl-token';
+import { SonicAgentKit } from '@sendaifun/sonic-agent-kit';
 const base64 = require("buffer").Buffer;
 
 @Injectable()
@@ -25,15 +26,13 @@ export class ResoAgentService {
                 amount
             } = this.processPrompt(prompt);
 
-            const [fromMintAddress, toMintAddress] = await Promise.all([
+            const [inputMint, outputMint] = await Promise.all([
                 this.getMintAddress(fromToken),
                 this.getMintAddress(toToken)
             ]);
 
-            const inputMint = fromMintAddress;
-            const outputMint = toMintAddress;
             const amountInLamports = `${amount * 1000000000}`;
-            const slippageBps = "50";
+            const slippageBps = "10";
             const txVersion = "V0";
             const swapType = "swap-base-in";
 
@@ -60,20 +59,38 @@ export class ResoAgentService {
             );
 
             const swapUrl = `${this.SEGA_BASE_URL}swap/transaction/${swapType}`
-            const swapTrx = await firstValueFrom(
-                this.httpService.post(
-                    swapUrl,
-                    {
-                        wallet: userAddress,
-                        computeUnitPriceMicroLamports: "100",
-                        swapResponse: swapCompute.data,
-                        txVersion,
-                        wrapSol: true,
-                        unwrapSol: false,
-                        outputAccount: userAddress
-                    }
-                )
-            );
+            let swapTrx;
+            if (fromToken.toLowerCase === "sol") {
+                swapTrx = await firstValueFrom(
+                    this.httpService.post(
+                        swapUrl,
+                        {
+                            wallet: userAddress,
+                            computeUnitPriceMicroLamports: "100",
+                            swapResponse: swapCompute.data,
+                            txVersion,
+                            wrapSol: true,
+                            unwrapSol: false,
+                            outputAccount: userAddress
+                        }
+                    )
+                );
+            } else {
+                swapTrx = await firstValueFrom(
+                    this.httpService.post(
+                        swapUrl,
+                        {
+                            wallet: userAddress,
+                            computeUnitPriceMicroLamports: "100",
+                            swapResponse: swapCompute.data,
+                            txVersion,
+                            wrapSol: false,
+                            unwrapSol: true,
+                            outputAccount: userAddress
+                        }
+                    )
+                );
+            }
 
             // Decode the base64 transaction
             const txBuffer = Buffer.from(swapTrx.data.data[0].transaction, "base64");
@@ -86,7 +103,7 @@ export class ResoAgentService {
             transaction.message.recentBlockhash = blockhash;
 
             // Sign the transaction
-            transaction.sign([userAccount]); // Takes an array of signers
+            transaction.sign([userAccount]);
 
             // Send the signed transaction
             const signature = await connection.sendTransaction(transaction, {
@@ -106,8 +123,9 @@ export class ResoAgentService {
             }
 
             return `https://explorer.sonic.game/tx/${signature}?cluster=mainnet-alpha`;
-        } catch (error) {
+        } catch (error: any) {
             console.error('Error in swapToken:', error);
+            return error.message;
         }
     }
 
@@ -119,7 +137,7 @@ export class ResoAgentService {
 
             if (!match) {
                 throw new Error(
-                    "Invalid prompt format. Use: 'Swap 10 ETH for SOL' or 'Bridge 10 USDC to ETH'",
+                    "Invalid prompt format. Use: 'Swap 10 ETH for SOL'",
                 );
             }
 
@@ -136,6 +154,7 @@ export class ResoAgentService {
             };
         } catch (error: any) {
             console.error(error.message);
+            return error.message;
         }
     }
 
@@ -159,11 +178,41 @@ export class ResoAgentService {
             }
 
             return tokenData.address;
-        } catch (error) {
+        } catch (error: any) {
             console.error(
                 `Error fetching token address for ${tokenSymbol}:`,
-                error,
+                error.message,
             );
+            return error.message;
+        }
+    }
+
+    async createToken(pk: string, name: string, uri: string, symbol: string, decimals: number, initialSupply: number) {
+        try {
+            const sonicAgentKit = new SonicAgentKit(
+                pk,
+                "https://api.testnet.sonic.game/",
+                // "https://rpc.mainnet-alpha.sonic.game/",
+                { OPENAI_API_KEY: "sk-proj-BG0emQJv4YmC3Q2bouuz2boR_otqvLAkBXM_IXLhgBkXViHE-AQqElhlulAcLc4vr7-" }
+            );
+
+            const token = await sonicAgentKit.deployToken(
+                name,
+                uri,
+                symbol,
+                decimals,
+                initialSupply
+            );
+
+            console.log(token);
+            return token.mint.toString();
+
+        } catch (error: any) {
+            console.error(
+                `Error creating token:`,
+                error.message,
+            );
+            return error.message;
         }
     }
 }
