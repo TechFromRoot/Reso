@@ -115,18 +115,93 @@ export class WalletService {
       const connection = new Connection(rpcURL, 'confirmed');
       const publicKey = new PublicKey(address);
       const tokenMint = new PublicKey(tokenAddress);
-
+      // console.log(tokenMint);
       const associatedTokenAddress = await getAssociatedTokenAddress(
         tokenMint,
         publicKey,
+        true,
       );
+      console.log(
+        'Associated Token Address (ATA):',
+        associatedTokenAddress.toBase58(),
+      );
+      // Check if the associated token account exists
+      const accountInfo = await connection.getAccountInfo(
+        associatedTokenAddress,
+      );
+      // console.log(accountInfo);
+      if (!accountInfo) {
+        return {
+          balance: 0, // Return 0 if the account does not exist
+        };
+      }
 
-      const accountInfo = await getAccount(connection, associatedTokenAddress);
+      const tokenAccount = await getAccount(connection, associatedTokenAddress);
       return {
-        balance: Number(accountInfo.amount) / 10 ** decimal,
+        balance: Number(tokenAccount.amount) / 10 ** decimal,
       };
     } catch (error) {
+      console.log('ERROR', error);
       throw new Error(`Failed to get SPL token balance: ${error.message}`);
+    }
+  };
+
+  getToken2022Balance = async (
+    walletAddress: string,
+    tokenMintAddress: string,
+    rpcUrl: string,
+    decimals: number,
+    programId: string,
+  ): Promise<Record<string, number>> => {
+    // Validate inputs
+    if (!walletAddress || !tokenMintAddress || !rpcUrl || decimals < 0) {
+      throw new Error('Invalid input parameters');
+    }
+
+    // Initialize connection
+    const connection = new Connection(rpcUrl, 'confirmed');
+
+    // Convert to PublicKey objects
+    let walletPubkey: PublicKey;
+    let tokenMintPubkey: PublicKey;
+    try {
+      walletPubkey = new PublicKey(walletAddress);
+      tokenMintPubkey = new PublicKey(tokenMintAddress);
+    } catch (error) {
+      console.log(error);
+      throw new Error('Invalid wallet or token mint address format');
+    }
+
+    // Get the associated token account (ATA) for Token-2022
+    const associatedTokenAddress = await getAssociatedTokenAddress(
+      tokenMintPubkey,
+      walletPubkey,
+      true, // Allow owner off-curve
+      new PublicKey(programId), // Use Token-2022 program ID
+    );
+
+    // Fetch token account balance
+    try {
+      const tokenAccount = await getAccount(
+        connection,
+        associatedTokenAddress,
+        'confirmed',
+        new PublicKey(programId), // Specify Token-2022 program
+      );
+
+      const balance = Number(tokenAccount.amount) / 10 ** decimals;
+
+      return {
+        balance,
+      };
+    } catch (error) {
+      if (error.name === 'TokenAccountNotFoundError') {
+        // Return 0 balance if the ATA doesn't exist
+        return {
+          balance: 0,
+        };
+      }
+      throw new Error(`Failed to fetch Token-2022 balance: ${error.message}`);
     }
   };
 

@@ -1,5 +1,5 @@
 export const showBalanceMarkup = async (tokens: any) => {
-  let message = `\u2003\u2003\u2003\u2003\u2003\u2003\u2003<b>Wallet Balance</b>\n\n`;
+  let message = `<b>Wallet Balance</b>\n\n`;
 
   for (const token of tokens) {
     message += `➤ ${token.balance} <b>${token.name}</b> (${token.network})\n`;

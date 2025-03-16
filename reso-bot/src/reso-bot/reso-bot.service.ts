@@ -9,6 +9,7 @@ import {
   displayPrivateKeyMarkup,
   exportWalletWarningMarkup,
   resetWalletWarningMarkup,
+  showBalanceMarkup,
   walletDetailsMarkup,
   walletFeaturesMarkup,
   welcomeMessageMarkup,
@@ -17,6 +18,13 @@ import { WalletService } from 'src/wallet/wallet.service';
 import { Session, SessionDocument } from 'src/database/schemas/session.schema';
 
 const token = process.env.TELEGRAM_TOKEN;
+interface Token {
+  address: string;
+  programId: string;
+  symbol: string;
+  name: string;
+  decimals: number;
+}
 
 @Injectable()
 export class ResoBotService {
@@ -526,8 +534,7 @@ export class ResoBotService {
           );
 
         case '/checkBalance':
-          return;
-        // return this.showBalance(chatId);
+          return this.showBalance(chatId);
 
         case '/portfolioOverview':
           return;
@@ -768,155 +775,112 @@ export class ResoBotService {
     }
   };
 
-  //   showBalance = async (chatId: TelegramBot.ChatId, showMarkUp = true) => {
-  //     try {
-  //       await this.resoBot.sendChatAction(chatId, 'typing');
-  //       const user = await this.UserModel.findOne({ chatId: chatId });
-  //       if (!user?.svmWalletAddress) {
-  //         return this.resoBot.sendMessage(
-  //           chatId,
-  //           `You don't have any wallet connected`,
-  //         );
-  //       }
+  showBalance = async (chatId: TelegramBot.ChatId, showMarkUp = true) => {
+    try {
+      await this.resoBot.sendChatAction(chatId, 'typing');
+      const user = await this.UserModel.findOne({ chatId: chatId });
+      if (!user?.svmWalletAddress) {
+        return this.resoBot.sendMessage(
+          chatId,
+          `You don't have any wallet connected`,
+        );
+      }
 
-  //       const allTokens = await fetchAllTokenList(['native', 'erc20', 'spl']);
-  //       const tokenArrays = {};
+      const allTokens: Token[] = await this.fetchSupportedTokenList();
+      const tokenArrays = {};
 
-  //       // Helper function to process tokens for a network
-  //       const processTokens = async (
-  //         network: string,
-  //         tokens: any[],
-  //         rpc?: string,
-  //       ) => {
-  //         try {
-  //           return (
-  //             await Promise.all(
-  //               tokens.map(async (token) => {
-  //                 try {
-  //                   if (
-  //                     token.mint ===
-  //                       'So11111111111111111111111111111111111111112' ||
-  //                     token.contract ===
-  //                       '0x0000000000000000000000000000000000000000'
-  //                   ) {
-  //                     const { balance } =
-  //                       network === 'solana'
-  //                         ? await this.walletService.getSolBalance(
-  //                             user!.svmWalletAddress,
-  //                             rpc,
-  //                           )
-  //                         : await this.walletService.getNativeTokenBalance(
-  //                             user!.evmWalletAddress,
-  //                             rpc!,
-  //                           );
+      // Helper function to process tokens for a network
+      const processTokens = async (
+        network: string,
+        tokens: Token[],
+        rpc?: string,
+      ) => {
+        try {
+          return (
+            await Promise.all(
+              tokens.map(async (token) => {
+                try {
+                  if (
+                    token.address ===
+                    'So11111111111111111111111111111111111111112'
+                  ) {
+                    const { balance } = await this.walletService.getSolBalance(
+                      user!.svmWalletAddress,
+                      rpc,
+                    );
 
-  //                     return {
-  //                       name: token.symbol,
-  //                       balance,
-  //                       network,
-  //                       address: token.mint || token.contract,
-  //                     };
-  //                   } else {
-  //                     const { balance } =
-  //                       network === 'solana'
-  //                         ? await this.walletService.getSPLTokenBalance(
-  //                             user!.solanaWalletAddress,
-  //                             token.mint,
-  //                           )
-  //                         : await this.walletService.getERC20Balance(
-  //                             user!.evmWalletAddress,
-  //                             token.contract,
-  //                             rpc!,
-  //                           );
+                    return {
+                      name: token.symbol,
+                      balance,
+                      network,
+                      address: token.address,
+                    };
+                  } else {
+                    const { balance } =
+                      await this.walletService.getToken2022Balance(
+                        user!.svmWalletAddress,
+                        token.address,
+                        rpc,
+                        token.decimals,
+                        token.programId,
+                      );
+                    console.log(
+                      'Blance :',
+                      token.name,
+                      balance,
+                      user.svmWalletAddress,
+                    );
+                    if (balance > 0) {
+                      return {
+                        name: token.symbol,
+                        balance,
+                        network,
+                        address: token.address,
+                      };
+                    }
+                  }
+                } catch (tokenError) {
+                  console.log(
+                    `Error fetching token ${token.symbol} on ${network}:`,
+                    tokenError,
+                  );
+                  return null; // Skip this token
+                }
+              }),
+            )
+          ).filter(Boolean);
+        } catch (networkError) {
+          console.log(`Error processing ${network} tokens:`, networkError);
+          return []; // Return empty array for this network
+        }
+      };
 
-  //                     if (balance > 0) {
-  //                       return {
-  //                         name: token.symbol,
-  //                         balance,
-  //                         network,
-  //                         address: token.mint || token.contract,
-  //                       };
-  //                     }
-  //                   }
-  //                 } catch (tokenError) {
-  //                   console.log(
-  //                     `Error fetching token ${token.symbol} on ${network}:`,
-  //                     tokenError,
-  //                   );
-  //                   return null; // Skip this token
-  //                 }
-  //               }),
-  //             )
-  //           ).filter(Boolean);
-  //         } catch (networkError) {
-  //           console.log(`Error processing ${network} tokens:`, networkError);
-  //           return []; // Return empty array for this network
-  //         }
-  //       };
+      // Process each network independently
+      tokenArrays['sonic'] = await processTokens(
+        'sonic',
+        allTokens,
+        process.env.SONIC_RPC,
+      );
 
-  //       // Process each network independently
-  //       tokenArrays['solana'] = await processTokens(
-  //         'solana',
-  //         allTokens['solana'],
-  //       );
-  //       tokenArrays['ethereum'] = await processTokens(
-  //         'ethereum',
-  //         allTokens['ethereum'],
-  //         process.env.ETHEREUM_RPC,
-  //       );
-  //       tokenArrays['base'] = await processTokens(
-  //         'base',
-  //         allTokens['base'],
-  //         process.env.BASE_RPC,
-  //       );
-  //       tokenArrays['arbitrum'] = await processTokens(
-  //         'arbitrum',
-  //         allTokens['arbitrum'],
-  //         process.env.ARBITRUM_RPC,
-  //       );
-  //       tokenArrays['optimism'] = await processTokens(
-  //         'optimism',
-  //         allTokens['optimism'],
-  //         process.env.OPTIMISM_RPC,
-  //       );
-  //       tokenArrays['avalanche'] = await processTokens(
-  //         'avalanche',
-  //         allTokens['avalanche'],
-  //         process.env.AVALANCHE_RPC,
-  //       );
-  //       tokenArrays['polygon'] = await processTokens(
-  //         'polygon',
-  //         allTokens['polygon'],
-  //         process.env.POLYGON_RPC,
-  //       );
+      const allTokenBalance = [...tokenArrays['sonic']];
 
-  //       const allTokenBalance = [
-  //         ...tokenArrays['ethereum'],
-  //         ...tokenArrays['solana'],
-  //         ...tokenArrays['base'],
-  //         ...tokenArrays['arbitrum'],
-  //         ...tokenArrays['optimism'],
-  //         ...tokenArrays['avalanche'],
-  //         ...tokenArrays['polygon'],
-  //       ];
+      if (showMarkUp) {
+        const showBalance = await showBalanceMarkup(allTokenBalance);
+        if (showBalance) {
+          const replyMarkup = { inline_keyboard: showBalance.keyboard };
 
-  //       if (showMarkUp) {
-  //         const showBalance = await showBalanceMarkup(allTokenBalance);
-  //         if (showBalance) {
-  //           const replyMarkup = { inline_keyboard: showBalance.keyboard };
-
-  //           return await this.resoBot.sendMessage(chatId, showBalance.message, {
-  //             parse_mode: 'HTML',
-  //             reply_markup: replyMarkup,
-  //           });
-  //         }
-  //       } else {
-  //         return allTokenBalance;
-  //       }
-  //     } catch (error) {
-  //       console.log('General error in showBalance:', error);
-  //     }
-  //   };
+          return await this.resoBot.sendMessage(chatId, showBalance.message, {
+            parse_mode: 'HTML',
+            reply_markup: replyMarkup,
+          });
+        }
+      } else {
+        return allTokenBalance;
+      }
+    } catch (error) {
+      console.log('General error in showBalance:', error);
+    }
+  };
 
   showExportWalletWarning = async (chatId: TelegramBot.ChatId) => {
     try {
@@ -1188,5 +1152,29 @@ export class ResoBotService {
 
     console.log(thresholds);
     return { upperThreshold: thresholds[0], lowerThreshold: thresholds[1] };
+  };
+
+  fetchSupportedTokenList = async () => {
+    try {
+      const fetchTokenList = await this.httpService.axiosRef.get(
+        'https://api.sega.so/api/mint/list',
+      );
+
+      const tokenList = fetchTokenList.data.data;
+      if (tokenList && tokenList.mintList.length > 0) {
+        const filteredTokens = tokenList.mintList.map((token: Token) => {
+          return {
+            address: token.address,
+            programId: token.programId,
+            symbol: token.symbol,
+            name: token.name,
+            decimals: token.decimals,
+          };
+        });
+        return filteredTokens;
+      }
+    } catch (error) {
+      console.log(error);
+    }
   };
 }

@@ -1,6 +1,6 @@
 export const walletFeaturesMarkup = async () => {
   return {
-    message: `Please Select any action below 👇`,
+    message: `Choose an action below to manage your wallet 👇`,
     keyboard: [
       [
         {
