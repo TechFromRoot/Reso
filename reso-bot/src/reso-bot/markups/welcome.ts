@@ -1,7 +1,6 @@
 export const welcomeMessageMarkup = async (userName: string) => {
-  console.log(userName);
   return {
-    message: `Hi @${userName} 👋, Welcome to <b>AegisX</b> \n\nSecure, Intelligent Cross-Chain Solutions Agent, here is what I can do: 👇\n- Agentic auto cross chain swaps\n- Portfolio Rebalancing\n- AI-Driven Market & sentiment Analysis\n- Automatic Swapping(automatically execute trades to rebalance your portfolio)`,
+    message: `Hello @${userName} 👋\n\nWelcome to <b>RESObot</b> –> your fastest and most secure companion for trading tokens on Sonic SVM! 🚀 Get ready to trade smarter and faster with us!\n\n-Buy a token with just the token address`,
 
     keyboard: [
       [

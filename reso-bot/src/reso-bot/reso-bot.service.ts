@@ -107,7 +107,7 @@ export class ResoBotService {
 
       // Handle /menu command
       if (command === '/menu') {
-        const allFeatures = await allFeaturesMarkup(user);
+        const allFeatures = await allFeaturesMarkup();
         if (allFeatures) {
           const replyMarkup = { inline_keyboard: allFeatures.keyboard };
           await this.resoBot.sendMessage(msg.chat.id, allFeatures.message, {
@@ -257,8 +257,8 @@ export class ResoBotService {
               const updatedUser = await this.UserModel.findOneAndUpdate(
                 { chatId: msg.chat.id },
                 {
-                  solanaWalletDetails: encryptedWalletDetails.json,
-                  solanaWalletAddress: importedWallet.address,
+                  svmWalletDetails: encryptedWalletDetails.json,
+                  svmWalletAddress: importedWallet.address,
                 },
                 { new: true }, // This ensures the updated document is returned
               );
@@ -498,10 +498,10 @@ export class ResoBotService {
             let message = 'Wallet Address:\n';
 
             if (user?.svmWalletAddress) {
-              message += `<b><code>${user.svmWalletAddress}</code></b> (SVM Wallet)\n\n`;
+              message += `<b><code>${user.svmWalletAddress}</code></b>\n\n`;
             }
 
-            message += 'Send tokens to your address above.';
+            message += 'Send SOL to your address above.';
 
             return await this.resoBot.sendMessage(chatId, message, {
               parse_mode: 'HTML',
@@ -527,7 +527,7 @@ export class ResoBotService {
 
         case '/checkBalance':
           return;
-        //   return this.showBalance(chatId);
+        // return this.showBalance(chatId);
 
         case '/portfolioOverview':
           return;
@@ -611,9 +611,8 @@ export class ResoBotService {
                 { chatId: chatId },
                 {
                   $unset: {
-                    walletAddress: '',
-                    walletDetails: '',
-                    privateKey: '',
+                    svmWalletAddress: '',
+                    svmWalletDetails: '',
                   },
                 },
               );
@@ -688,7 +687,7 @@ export class ResoBotService {
   sendAllFeature = async (user: UserDocument) => {
     try {
       await this.resoBot.sendChatAction(user.chatId, 'typing');
-      const allFeatures = await allFeaturesMarkup(user);
+      const allFeatures = await allFeaturesMarkup();
       if (allFeatures) {
         const replyMarkup = {
           inline_keyboard: allFeatures.keyboard,
@@ -948,16 +947,10 @@ export class ResoBotService {
     const latestSession = await this.SessionModel.findOne({ chatId: chatId });
     const trimmedInput = input.trim();
 
-    // Regex for Ethereum (EVM) private key (64 hex chars starting with 0x)
-    const evmPrivateKeyRegex = /^0x[a-fA-F0-9]{64}$/;
-
     // Regex for Solana private key (Base58 encoded, usually 44 chars)
-    const solanaPrivateKeyRegex = /^[A-Za-z1-9]{32,44}$/;
+    const svmPrivateKeyRegex = /^[1-9A-HJ-NP-Za-km-z]{43,88}$/;
 
-    // Check if the input matches either EVM or Solana private key regex
-    if (evmPrivateKeyRegex.test(trimmedInput)) {
-      return { isValid: true, walletType: 'evm' };
-    } else if (solanaPrivateKeyRegex.test(trimmedInput)) {
+    if (svmPrivateKeyRegex.test(trimmedInput)) {
       return { isValid: true, walletType: 'solana' };
     } else if (latestSession) {
       if (latestSession!.importWallet) {

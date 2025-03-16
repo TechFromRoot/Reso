@@ -1,20 +1,12 @@
-export const displayPrivateKeyMarkup = async (
-  privateKeyEVM?: string,
-  privateKeySolana?: string,
-) => {
+export const displayPrivateKeyMarkup = async (privateKeySVM?: string) => {
   let message = 'Your Private Key is:\n\n';
 
-  if (privateKeyEVM) {
-    message += `<code>${privateKeyEVM}</code> (EVM Wallet)\n\n`;
-    message += '👉 Import into MetaMask, Coinbase Wallet, etc.\n\n';
+  if (privateKeySVM) {
+    message += `<code>${privateKeySVM}</code>\n\n`;
+    message += '👉 Import into backpack, Phantom, Solflare, etc.\n\n';
   }
 
-  if (privateKeySolana) {
-    message += `<code>${privateKeySolana}</code> (Solana Wallet)\n\n`;
-    message += '👉 Import into Phantom, Solflare, etc.\n\n';
-  }
-
-  if (!privateKeyEVM && !privateKeySolana) {
+  if (!privateKeySVM) {
     message = 'No private key available.';
   } else {
     message +=

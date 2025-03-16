@@ -1,6 +1,4 @@
-import { UserDocument } from 'src/database/schemas/user.schema';
-
-export const allFeaturesMarkup = async (user: UserDocument) => {
+export const allFeaturesMarkup = async () => {
   return {
     message: `Please Select any action below 👇`,
     keyboard: [
@@ -13,62 +11,51 @@ export const allFeaturesMarkup = async (user: UserDocument) => {
           }),
         },
         {
-          text: '📊 Portfolio Overview',
+          text: '💱 Trade Tokens',
           callback_data: JSON.stringify({
-            command: '/portfolioOverview',
-            language: 'english',
-          }),
-        },
-      ],
-      // [
-      //   {
-      //     text: `${user.enableAgenticAutoSwap ? `⇄ Agentic Auto bridge mode Enabled` : '⇌  Agentic Auto bridge mode Disabled'}`,
-      //     callback_data: JSON.stringify({
-      //       command: '/disableAgenticSwap',
-      //       language: 'english',
-      //     }),
-      //   },
-      // ],
-      [
-        {
-          text: `${user.rebalanceEnabled ? `✅ Auto Rebalancing mode Enabled` : '🔄 Enable Auto Rebalancing agent mode'}`,
-          callback_data: JSON.stringify({
-            command: '/enableRebalance',
+            command: '/tradeTokens',
             language: 'english',
           }),
         },
       ],
       [
         {
-          text: '🎯 Set Target Allocation',
+          text: 'Buy',
           callback_data: JSON.stringify({
-            command: '/setTargetAllocation',
-            language: 'english',
-          }),
-        },
-        {
-          text: '	🔼 Set Threshold',
-          callback_data: JSON.stringify({
-            command: '/setThreshold',
+            command: '/buyToken',
             language: 'english',
           }),
         },
       ],
       [
         {
-          text: '📈 Token Insights',
+          text: '🔔 Price Alerts',
           callback_data: JSON.stringify({
-            command: '/tokenInsight',
+            command: '/priceAlerts',
+            language: 'english',
+          }),
+        },
+        {
+          text: '📜 Transaction History',
+          callback_data: JSON.stringify({
+            command: '/transactionHistory',
             language: 'english',
           }),
         },
       ],
       [
+        {
+          text: '⚙️ Settings',
+          callback_data: JSON.stringify({
+            command: '/settings',
+            language: 'english',
+          }),
+        },
         {
           text: '📢 Share',
           language: 'english',
           switch_inline_query:
-            'Rebalancr, portfolio management has never been easier!.',
+            'RESObot, the ultimate trading bot for Sonic SVM!',
         },
       ],
       [
