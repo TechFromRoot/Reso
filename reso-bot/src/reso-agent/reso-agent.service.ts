@@ -1,218 +1,397 @@
 import { HttpService } from '@nestjs/axios';
 import { Injectable } from '@nestjs/common';
 import { firstValueFrom } from 'rxjs';
-import { Connection, PublicKey, Keypair, Transaction, VersionedMessage, VersionedTransaction } from '@solana/web3.js';
+import {
+  Connection,
+  PublicKey,
+  Keypair,
+  VersionedTransaction,
+} from '@solana/web3.js';
 import bs58 from 'bs58';
 import { getOrCreateAssociatedTokenAccount } from '@solana/spl-token';
 import { SonicAgentKit } from '@sendaifun/sonic-agent-kit';
-const base64 = require("buffer").Buffer;
+import { InjectModel } from '@nestjs/mongoose';
+import { Transaction } from 'src/database/schemas/transaction.schema';
+import { Model } from 'mongoose';
 
 @Injectable()
 export class ResoAgentService {
-    private readonly SEGA_BASE_URL = 'https://api.sega.so/';
+  private readonly SEGA_BASE_URL = 'https://api.sega.so/';
 
-    constructor(
-        private readonly httpService: HttpService,
-    ) { }
+  constructor(
+    private readonly httpService: HttpService,
+    @InjectModel(Transaction.name)
+    private readonly TransactionModel: Model<Transaction>,
+  ) {}
 
-    async swapToken(
-        privateKey: string,
-        prompt: string,
-    ) {
-        try {
-            const {
-                fromToken,
-                toToken,
-                amount
-            } = this.processPrompt(prompt);
+  async botBuyToken(
+    privateKey: string,
+    tokenMint: string,
+    amount: string,
+    chatId: number,
+  ) {
+    try {
+      const inputMint = 'So11111111111111111111111111111111111111112';
+      const outputMint = tokenMint;
 
-            const [inputMint, outputMint] = await Promise.all([
-                this.getMintAddress(fromToken),
-                this.getMintAddress(toToken)
-            ]);
+      const amountInLamports = `${Number(amount) * 1000000000}`;
+      const slippageBps = '10';
+      const txVersion = 'V0';
+      const swapType = 'swap-base-in';
 
-            const amountInLamports = `${amount * 1000000000}`;
-            const slippageBps = "10";
-            const txVersion = "V0";
-            const swapType = "swap-base-in";
+      const swapComputeUrl = `${this.SEGA_BASE_URL}swap/compute/${swapType}?inputMint=${inputMint}&outputMint=${outputMint}&amount=${amountInLamports}&slippageBps=${slippageBps}&txVersion=${txVersion}`;
+      const swapCompute = await firstValueFrom(
+        this.httpService.get(swapComputeUrl),
+      );
+      console.log(swapCompute.data);
 
-            const swapComputeUrl = `${this.SEGA_BASE_URL}swap/compute/${swapType}?inputMint=${inputMint}&outputMint=${outputMint}&amount=${amountInLamports}&slippageBps=${slippageBps}&txVersion=${txVersion}`
-            const swapCompute = await firstValueFrom(
-                this.httpService.get(
-                    swapComputeUrl
-                )
-            );
-            console.log(swapCompute.data);
+      const userAccount = Keypair.fromSecretKey(bs58.decode(privateKey));
+      const userAddress = userAccount.publicKey;
 
-            const userAccount = Keypair.fromSecretKey(bs58.decode(privateKey));
-            const userAddress = userAccount.publicKey;
+      const connection = new Connection(
+        `https://rpc.mainnet-alpha.sonic.game/`,
+        {
+          commitment: 'confirmed',
+        },
+      );
 
-            const connection = new Connection(`https://rpc.mainnet-alpha.sonic.game/`, {
-                commitment: 'confirmed',
-            });
+      await getOrCreateAssociatedTokenAccount(
+        connection,
+        userAccount,
+        new PublicKey(inputMint),
+        userAddress,
+      );
 
-            await getOrCreateAssociatedTokenAccount(
-                connection,
-                userAccount,
-                new PublicKey(inputMint),
-                userAddress
-            );
+      const swapUrl = `${this.SEGA_BASE_URL}swap/transaction/${swapType}`;
 
-            const swapUrl = `${this.SEGA_BASE_URL}swap/transaction/${swapType}`
-            let swapTrx;
-            if (fromToken.toLowerCase === "sol") {
-                swapTrx = await firstValueFrom(
-                    this.httpService.post(
-                        swapUrl,
-                        {
-                            wallet: userAddress,
-                            computeUnitPriceMicroLamports: "100",
-                            swapResponse: swapCompute.data,
-                            txVersion,
-                            wrapSol: true,
-                            unwrapSol: false,
-                            outputAccount: userAddress
-                        }
-                    )
-                );
-            } else {
-                swapTrx = await firstValueFrom(
-                    this.httpService.post(
-                        swapUrl,
-                        {
-                            wallet: userAddress,
-                            computeUnitPriceMicroLamports: "100",
-                            swapResponse: swapCompute.data,
-                            txVersion,
-                            wrapSol: false,
-                            unwrapSol: true,
-                            outputAccount: userAddress
-                        }
-                    )
-                );
-            }
+      const swapTrx = await firstValueFrom(
+        this.httpService.post(swapUrl, {
+          wallet: userAddress,
+          computeUnitPriceMicroLamports: '100',
+          swapResponse: swapCompute.data,
+          txVersion,
+          wrapSol: true,
+          unwrapSol: false,
+          outputAccount: userAddress,
+        }),
+      );
 
-            // Decode the base64 transaction
-            const txBuffer = Buffer.from(swapTrx.data.data[0].transaction, "base64");
+      // Decode the base64 transaction
+      const txBuffer = Buffer.from(swapTrx.data.data[0].transaction, 'base64');
 
-            // Deserialize into a VersionedTransaction
-            const transaction = VersionedTransaction.deserialize(txBuffer);
+      // Deserialize into a VersionedTransaction
+      const transaction = VersionedTransaction.deserialize(txBuffer);
 
-            // Set recent blockhash and fee payer
-            const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
-            transaction.message.recentBlockhash = blockhash;
+      // Set recent blockhash and fee payer
+      const { blockhash, lastValidBlockHeight } =
+        await connection.getLatestBlockhash();
+      transaction.message.recentBlockhash = blockhash;
 
-            // Sign the transaction
-            transaction.sign([userAccount]);
+      // Sign the transaction
+      transaction.sign([userAccount]);
 
-            // Send the signed transaction
-            const signature = await connection.sendTransaction(transaction, {
-                skipPreflight: false,
-                preflightCommitment: "confirmed",
-            });
+      // Send the signed transaction
+      const signature = await connection.sendTransaction(transaction, {
+        skipPreflight: false,
+        preflightCommitment: 'confirmed',
+      });
 
-            // Confirm the transaction
-            const confirmation = await connection.confirmTransaction({
-                signature,
-                blockhash,
-                lastValidBlockHeight
-            });
+      // Confirm the transaction
+      const confirmation = await connection.confirmTransaction({
+        signature,
+        blockhash,
+        lastValidBlockHeight,
+      });
 
-            if (confirmation.value.err) {
-                throw new Error('Transaction failed');
-            }
-
-            return `https://explorer.sonic.game/tx/${signature}?cluster=mainnet-alpha`;
-        } catch (error: any) {
-            console.error('Error in swapToken:', error);
-            return error.message;
-        }
+      if (confirmation.value.err) {
+        throw new Error('Transaction failed');
+      }
+      const inputTokenDetails = await this.getTokenDetails(
+        swapCompute.data.inputMint,
+      );
+      const outputTokenDetails = await this.getTokenDetails(
+        swapCompute.data.outputMint,
+      );
+      const tokenInPrice: any = await this.fetchSupportedTokenPrice(
+        swapCompute.data.inputMint,
+      );
+      const transactionDetails = new this.TransactionModel({
+        chatId: chatId,
+        TokenInAddress: swapCompute.data.inputMint,
+        TokenInSymbol: inputTokenDetails.symbol,
+        TokenInName: inputTokenDetails.name,
+        TokenInAmount: swapCompute.data.inputAmount,
+        TokenInPrice: tokenInPrice,
+        TokenOutAddress: swapCompute.data.outputMint,
+        TokenOutSymbol: outputTokenDetails.symbol,
+        TokenOutName: outputTokenDetails.name,
+        TokenOutAmount: swapCompute.data.outputAmount,
+        hash: signature,
+      });
+      await transactionDetails.save();
+      return `https://explorer.sonic.game/tx/${signature}?cluster=mainnet-alpha`;
+    } catch (error: any) {
+      console.error('Error in swapToken:', error);
+      return error.message;
     }
+  }
 
-    processPrompt(prompt: string) {
-        try {
-            const regex = /(swap|bridge)\s*(\d*\.?\d+)\s*([a-zA-Z0-9]+)\s*(?:to|for)\s*([a-zA-Z0-9]+)/i;
+  async swapToken(privateKey: string, prompt: string, chatId: number) {
+    try {
+      const { fromToken, toToken, amount } = this.processPrompt(prompt);
 
-            const match = prompt.match(regex);
+      const [inputMint, outputMint] = await Promise.all([
+        this.getMintAddress(fromToken),
+        this.getMintAddress(toToken),
+      ]);
 
-            if (!match) {
-                throw new Error(
-                    "Invalid prompt format. Use: 'Swap 10 ETH for SOL'",
-                );
-            }
+      const amountInLamports = `${amount * 1000000000}`;
+      const slippageBps = '10';
+      const txVersion = 'V0';
+      const swapType = 'swap-base-in';
 
-            const action = match[1].toLowerCase();
-            const amount = parseFloat(match[2]);
-            const fromToken = match[3].trim().toUpperCase();
-            const toToken = match[4].trim().toUpperCase();
+      const swapComputeUrl = `${this.SEGA_BASE_URL}swap/compute/${swapType}?inputMint=${inputMint}&outputMint=${outputMint}&amount=${amountInLamports}&slippageBps=${slippageBps}&txVersion=${txVersion}`;
+      const swapCompute = await firstValueFrom(
+        this.httpService.get(swapComputeUrl),
+      );
+      console.log(swapCompute.data);
 
-            return {
-                action, // 'swap' or 'bridge'
-                fromToken,
-                toToken,
-                amount
-            };
-        } catch (error: any) {
-            console.error(error.message);
-            return error.message;
-        }
+      const userAccount = Keypair.fromSecretKey(bs58.decode(privateKey));
+      const userAddress = userAccount.publicKey;
+
+      const connection = new Connection(
+        `https://rpc.mainnet-alpha.sonic.game/`,
+        {
+          commitment: 'confirmed',
+        },
+      );
+
+      await getOrCreateAssociatedTokenAccount(
+        connection,
+        userAccount,
+        new PublicKey(inputMint),
+        userAddress,
+      );
+
+      const swapUrl = `${this.SEGA_BASE_URL}swap/transaction/${swapType}`;
+      let swapTrx;
+      if (fromToken.toLowerCase === 'sol') {
+        swapTrx = await firstValueFrom(
+          this.httpService.post(swapUrl, {
+            wallet: userAddress,
+            computeUnitPriceMicroLamports: '100',
+            swapResponse: swapCompute.data,
+            txVersion,
+            wrapSol: true,
+            unwrapSol: false,
+            outputAccount: userAddress,
+          }),
+        );
+      } else {
+        swapTrx = await firstValueFrom(
+          this.httpService.post(swapUrl, {
+            wallet: userAddress,
+            computeUnitPriceMicroLamports: '100',
+            swapResponse: swapCompute.data,
+            txVersion,
+            wrapSol: false,
+            unwrapSol: true,
+            outputAccount: userAddress,
+          }),
+        );
+      }
+
+      // Decode the base64 transaction
+      const txBuffer = Buffer.from(swapTrx.data.data[0].transaction, 'base64');
+
+      // Deserialize into a VersionedTransaction
+      const transaction = VersionedTransaction.deserialize(txBuffer);
+
+      // Set recent blockhash and fee payer
+      const { blockhash, lastValidBlockHeight } =
+        await connection.getLatestBlockhash();
+      transaction.message.recentBlockhash = blockhash;
+
+      // Sign the transaction
+      transaction.sign([userAccount]);
+
+      // Send the signed transaction
+      const signature = await connection.sendTransaction(transaction, {
+        skipPreflight: false,
+        preflightCommitment: 'confirmed',
+      });
+
+      // Confirm the transaction
+      const confirmation = await connection.confirmTransaction({
+        signature,
+        blockhash,
+        lastValidBlockHeight,
+      });
+
+      if (confirmation.value.err) {
+        throw new Error('Transaction failed');
+      }
+      const inputTokenDetails = await this.getTokenDetails(
+        swapCompute.data.inputMint,
+      );
+      const outputTokenDetails = await this.getTokenDetails(
+        swapCompute.data.outputMint,
+      );
+      const tokenInPrice: any = await this.fetchSupportedTokenPrice(
+        swapCompute.data.inputMint,
+      );
+      const transactionDetails = new this.TransactionModel({
+        chatId: chatId,
+        TokenInAddress: swapCompute.data.inputMint,
+        TokenInSymbol: inputTokenDetails.symbol,
+        TokenInName: inputTokenDetails.name,
+        TokenInAmount: swapCompute.data.inputAmount,
+        TokenInPrice: tokenInPrice,
+        TokenOutAddress: swapCompute.data.outputMint,
+        TokenOutSymbol: outputTokenDetails.symbol,
+        TokenOutName: outputTokenDetails.name,
+        TokenOutAmount: swapCompute.data.outputAmount,
+        hash: signature,
+      });
+      await transactionDetails.save();
+      return `https://explorer.sonic.game/tx/${signature}?cluster=mainnet-alpha`;
+    } catch (error: any) {
+      console.error('Error in swapToken:', error);
+      return error.message;
     }
+  }
 
+  processPrompt(prompt: string) {
+    try {
+      const regex =
+        /(swap|bridge)\s*(\d*\.?\d+)\s*([a-zA-Z0-9]+)\s*(?:to|for)\s*([a-zA-Z0-9]+)/i;
 
-    async getMintAddress(tokenSymbol: string) {
-        try {
-            const url = `${this.SEGA_BASE_URL}api/mint/list`;
-            const response = await firstValueFrom(
-                this.httpService.get(
-                    url
-                )
-            );
+      const match = prompt.match(regex);
 
-            const mintList = response.data.data.mintList;
+      if (!match) {
+        throw new Error("Invalid prompt format. Use: 'Swap 10 ETH for SOL'");
+      }
 
-            // Find the token that matches the symbol (case-sensitive)
-            const tokenData = mintList.find((token: any) => token.symbol.toLowerCase() === tokenSymbol.toLowerCase());
+      const action = match[1].toLowerCase();
+      const amount = parseFloat(match[2]);
+      const fromToken = match[3].trim().toUpperCase();
+      const toToken = match[4].trim().toUpperCase();
 
-            if (!tokenData) {
-                throw new Error(`Token with symbol '${tokenSymbol}' not found.`);
-            }
-
-            return tokenData.address;
-        } catch (error: any) {
-            console.error(
-                `Error fetching token address for ${tokenSymbol}:`,
-                error.message,
-            );
-            return error.message;
-        }
+      return {
+        action, // 'swap' or 'bridge'
+        fromToken,
+        toToken,
+        amount,
+      };
+    } catch (error: any) {
+      console.error(error.message);
+      return error.message;
     }
+  }
 
-    async createToken(pk: string, name: string, uri: string, symbol: string, decimals: number, initialSupply: number) {
-        try {
-            const sonicAgentKit = new SonicAgentKit(
-                pk,
-                "https://api.testnet.sonic.game/",
-                // "https://rpc.mainnet-alpha.sonic.game/",
-                { OPENAI_API_KEY: "sk-proj-BG0emQJv4YmC3Q2bouuz2boR_otqvLAkBXM_IXLhgBkXViHE-AQqElhlulAcLc4vr7-" }
-            );
+  async getMintAddress(tokenSymbol: string) {
+    try {
+      const url = `${this.SEGA_BASE_URL}api/mint/list`;
+      const response = await firstValueFrom(this.httpService.get(url));
 
-            const token = await sonicAgentKit.deployToken(
-                name,
-                uri,
-                symbol,
-                decimals,
-                initialSupply
-            );
+      const mintList = response.data.data.mintList;
 
-            console.log(token);
-            return token.mint.toString();
+      // Find the token that matches the symbol (case-sensitive)
+      const tokenData = mintList.find(
+        (token: any) =>
+          token.symbol.toLowerCase() === tokenSymbol.toLowerCase(),
+      );
 
-        } catch (error: any) {
-            console.error(
-                `Error creating token:`,
-                error.message,
-            );
-            return error.message;
-        }
+      if (!tokenData) {
+        throw new Error(`Token with symbol '${tokenSymbol}' not found.`);
+      }
+
+      return tokenData.address;
+    } catch (error: any) {
+      console.error(
+        `Error fetching token address for ${tokenSymbol}:`,
+        error.message,
+      );
+      return error.message;
     }
+  }
+
+  async getTokenDetails(address: string) {
+    try {
+      const url = `${this.SEGA_BASE_URL}api/mint/list`;
+      const response = await firstValueFrom(this.httpService.get(url));
+
+      const mintList = response.data.data.mintList;
+
+      // Find the token that matches the symbol (case-sensitive)
+      const tokenData = mintList.find(
+        (token: any) => token.address.toLowerCase() === address.toLowerCase(),
+      );
+
+      if (!tokenData) {
+        throw new Error(`Token with address '${address}' not found.`);
+      }
+
+      return {
+        address: tokenData.address,
+        symbol: tokenData.symbol,
+        name: tokenData.name,
+        decimal: tokenData.decimals,
+      };
+    } catch (error: any) {
+      console.error(
+        `Error fetching token details for ${address}:`,
+        error.message,
+      );
+      return error.message;
+    }
+  }
+
+  fetchSupportedTokenPrice = async (address: string) => {
+    try {
+      const response = await this.httpService.axiosRef.get(
+        `https://api.sega.so/api/mint/price?mints=${address}`,
+      );
+      const price = Object.values(response.data.data)[0];
+      return price;
+    } catch (error) {
+      console.log(error);
+    }
+  };
+
+  async createToken(
+    pk: string,
+    name: string,
+    uri: string,
+    symbol: string,
+    decimals: number,
+    initialSupply: number,
+    chatId: number,
+  ) {
+    console.log(chatId);
+    try {
+      const sonicAgentKit = new SonicAgentKit(
+        pk,
+        'https://api.testnet.sonic.game/',
+        // "https://rpc.mainnet-alpha.sonic.game/",
+        {
+          OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+        },
+      );
+
+      const token = await sonicAgentKit.deployToken(
+        name,
+        uri,
+        symbol,
+        decimals,
+        initialSupply,
+      );
+
+      console.log(token);
+      return token.mint.toString();
+    } catch (error: any) {
+      console.error(`Error creating token:`, error.message);
+      return error.message;
+    }
+  }
 }

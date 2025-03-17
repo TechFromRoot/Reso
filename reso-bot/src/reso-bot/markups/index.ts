@@ -8,6 +8,7 @@ import { resetWalletWarningMarkup } from './resetWalletWarning';
 import { walletFeaturesMarkup } from './walletFeatures';
 import { showPortfolioMarkup } from './showPortfolio';
 import { buyTokenMarkup } from './buyTokenDetails';
+import { transactionHistoryMarkup } from './transactionHistory';
 
 export {
   welcomeMessageMarkup,
@@ -20,4 +21,5 @@ export {
   walletFeaturesMarkup,
   showPortfolioMarkup,
   buyTokenMarkup,
+  transactionHistoryMarkup,
 };

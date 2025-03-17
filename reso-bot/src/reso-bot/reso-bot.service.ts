@@ -14,9 +14,12 @@ import {
   walletDetailsMarkup,
   walletFeaturesMarkup,
   welcomeMessageMarkup,
+  transactionHistoryMarkup,
 } from './markups';
 import { WalletService } from 'src/wallet/wallet.service';
 import { Session, SessionDocument } from 'src/database/schemas/session.schema';
+import { ResoAgentService } from 'src/reso-agent/reso-agent.service';
+import { Transaction } from 'src/database/schemas/transaction.schema';
 
 const token = process.env.TELEGRAM_TOKEN;
 interface Token {
@@ -33,10 +36,13 @@ export class ResoBotService {
   private logger = new Logger(ResoBotService.name);
 
   constructor(
+    private readonly resoDefiAgent: ResoAgentService,
     private readonly walletService: WalletService,
     private readonly httpService: HttpService,
     @InjectModel(User.name) private readonly UserModel: Model<User>,
     @InjectModel(Session.name) private readonly SessionModel: Model<Session>,
+    @InjectModel(Transaction.name)
+    private readonly TransactionModel: Model<Transaction>,
   ) {
     this.resoBot = new TelegramBot(token, { polling: true });
     this.resoBot.on('message', this.handleRecievedMessages);
@@ -56,11 +62,19 @@ export class ResoBotService {
       const regex2 = /^0x[a-fA-F0-9]{40}$/;
       const regex = /^Swap (?:also )?(\d+\.?\d*) (\w+) (?:to|for) (\w+)$/i;
       const regexAmount = /^\d+(\.\d+)?$/;
-
+      const tokenCreationRegex =
+        /create a token with name\s+"([^"]+)",\s+symbol\s+"([^"]+)",\s+uri\s+"([^"]+)"\s*,decimal\s+"(\d+)",\s+initialSupply of (\d+)/;
+      const matchCreateToken = msg.text.trim().match(tokenCreationRegex);
       const swapRegex = /\b(swap)\b/i;
       const match = msg.text.trim().match(regex);
       const match2 = msg.text.trim().match(regex2);
-      if ((swapRegex.test(msg.text.trim()) || match || match2) && !session) {
+      if (
+        (swapRegex.test(msg.text.trim()) ||
+          match ||
+          match2 ||
+          matchCreateToken) &&
+        !session
+      ) {
         console.log(msg.text.trim());
         return this.handleAgentprompts(user, msg.text.trim());
       }
@@ -151,6 +165,9 @@ export class ResoBotService {
       const swapRegex = /\b(swap)\b/i;
       //   const match = msg.text.trim().match(regex);
       //   const match2 = msg.text.trim().match(regex2);
+      const tokenCreationRegex =
+        /create a token with name\s+"([^"]+)",\s+symbol\s+"([^"]+)",\s+uri\s+"([^"]+)"\s*,decimal\s+"(\d+)",\s+initialSupply of (\d+)/;
+      const matchCreateToken = msg.text.trim().match(tokenCreationRegex);
       console.log(msg.text.trim());
       const isTokenAddress = await this.isTokenAddress(msg.text!.trim());
 
@@ -204,10 +221,58 @@ export class ResoBotService {
       }
       if (regexAmount.test(msg.text.trim()) && session.tokenAmount) {
         //TODO: CALL SWAP FUNCTION HERE
-        return await this.resoBot.sendMessage(
-          msg.chat.id,
-          `Buying ${msg.text.trim()} SOL of ${session.tokenAmountAddress}`,
+        const user = await this.UserModel.findOne({ chatId: msg.chat.id });
+        const encryptedSVMWallet = await this.walletService.decryptSVMWallet(
+          `${process.env.DEFAULT_WALLET_PIN}`,
+          user.svmWalletDetails,
         );
+        if (encryptedSVMWallet.privateKey) {
+          const swapHash = await this.resoDefiAgent.botBuyToken(
+            encryptedSVMWallet.privateKey,
+            session.tokenAmountAddress,
+            msg.text.trim(),
+            msg.chat.id,
+          );
+          if (swapHash) {
+            return await this.resoBot.sendMessage(msg.chat.id, swapHash);
+          }
+          return await this.resoBot.sendMessage(
+            msg.chat.id,
+            'Transaction error, please Try again',
+          );
+        }
+      }
+      if (matchCreateToken && session.createToken) {
+        //TODO: CALL create token
+        const user = await this.UserModel.findOne({
+          chatId: msg.chat.id,
+        });
+        const encryptedSVMWallet = await this.walletService.decryptSVMWallet(
+          `${process.env.DEFAULT_WALLET_PIN}`,
+          user.svmWalletDetails,
+        );
+        if (encryptedSVMWallet.privateKey) {
+          const tokenAddress = await this.resoDefiAgent.createToken(
+            encryptedSVMWallet.privateKey,
+            matchCreateToken[1],
+            matchCreateToken[3],
+            matchCreateToken[2],
+            parseFloat(matchCreateToken[4]),
+            parseFloat(matchCreateToken[5]),
+            msg.chat.id,
+          );
+          if (tokenAddress) {
+            return await this.resoBot.sendMessage(
+              msg.chat.id,
+              `mint address:\n<code>${tokenAddress}</code>`,
+              { parse_mode: 'HTML' },
+            );
+          }
+          return await this.resoBot.sendMessage(
+            msg.chat.id,
+            'Transaction error, please Try again',
+          );
+        }
       }
 
       if (swapRegex.test(msg.text.trim())) {
@@ -220,25 +285,18 @@ export class ResoBotService {
 
         if (encryptedSVMWallet.privateKey) {
           //TODO: CALL SWAP FUNCTION HERE
-          const response = 'hey';
-          //   await this.aegisAgentService.crossSwapToken(
-          //     {
-          //       svm: encryptedSVMWallet.privateKey,
-          //     },
-          //     msg.text.trim(),
-          //   );
-          console.log('response :', response);
-          if (response) {
-            await this.resoBot.sendMessage(
-              user.chatId,
-              `Transaction Successful\n${response}`,
-            );
-          } else {
-            await this.resoBot.sendMessage(
-              user.chatId,
-              'Error performing transaction, try again',
-            );
+          const swapHash = await this.resoDefiAgent.swapToken(
+            encryptedSVMWallet.privateKey,
+            msg.text.trim(),
+            msg.chat.id,
+          );
+          if (swapHash) {
+            return await this.resoBot.sendMessage(msg.chat.id, swapHash);
           }
+          return await this.resoBot.sendMessage(
+            msg.chat.id,
+            'Transaction error, please Try again',
+          );
         }
       }
 
@@ -450,26 +508,18 @@ export class ResoBotService {
 
         if (encryptedSolanaWallet.privateKey) {
           //TODO: CALL SWAP TOKEN HERE
-          const response = 'HEY';
-          //    await this.aegisAgentService.crossSwapToken(
-          //     {
-          //       evm: encryptedEvmWallet.privateKey,
-          //       solana: encryptedSolanaWallet.privateKey,
-          //     },
-          //     msg,
-          //   );
-          console.log('response :', response);
-          if (response) {
-            await this.resoBot.sendMessage(
-              user.chatId,
-              `Transaction Successful\n${response}`,
-            );
-          } else {
-            await this.resoBot.sendMessage(
-              user.chatId,
-              'Error performing transaction, try again',
-            );
+          const swapHash = await this.resoDefiAgent.swapToken(
+            encryptedSolanaWallet.privateKey,
+            msg.trim(),
+            user.chatId,
+          );
+          if (swapHash) {
+            return await this.resoBot.sendMessage(user.chatId, swapHash);
           }
+          return await this.resoBot.sendMessage(
+            user.chatId,
+            'Transaction error, please Try again',
+          );
         }
       } else if (!match2 && !match) {
         // TODO: ADD AGENTIC CHAT HERE
@@ -631,6 +681,31 @@ export class ResoBotService {
             `Processing command failed, please try again`,
           );
 
+        case '/createToken':
+          await this.resoBot.sendChatAction(chatId, 'typing');
+          // check if user already have a wallet
+          if (!user!.svmWalletAddress) {
+            await this.resoBot.sendMessage(
+              query.message.chat.id,
+              `‼️ You need to have a wallet connected before you can create a token`,
+            );
+          }
+          // delete any existing session if any
+          await this.SessionModel.deleteMany({ chatId: chatId });
+          // create a new session
+          session = await this.SessionModel.create({
+            chatId: chatId,
+            importWallet: true,
+          });
+          if (session) {
+            await this.promptTokenCreation(chatId);
+            return;
+          }
+          return await this.resoBot.sendMessage(
+            query.message.chat.id,
+            `Processing command failed, please try again`,
+          );
+
         case '/fundWallet':
           if (user?.svmWalletAddress) {
             let message = 'Wallet Address:\n';
@@ -705,11 +780,59 @@ export class ResoBotService {
               chatId: query.message.chat.id,
             });
             //TODO: call swap function here
-            return await this.resoBot.sendMessage(
-              query.message.chat.id,
-              `Buying ${buy_amount} SOL of ${tokenAddress}`,
+            const encryptedSVMWallet =
+              await this.walletService.decryptSVMWallet(
+                `${process.env.DEFAULT_WALLET_PIN}`,
+                user.svmWalletDetails,
+              );
+
+            if (encryptedSVMWallet.privateKey) {
+              const swapHash = await this.resoDefiAgent.botBuyToken(
+                encryptedSVMWallet.privateKey,
+                tokenAddress,
+                `${buy_amount}`,
+                query.message.chat.id,
+              );
+              if (swapHash) {
+                return await this.resoBot.sendMessage(
+                  query.message.chat.id,
+                  swapHash,
+                );
+              }
+              return await this.resoBot.sendMessage(
+                query.message.chat.id,
+                'Transaction error, please Try again',
+              );
+            }
+            return;
+          }
+
+        case '/transactionHistory':
+          const userTransactions = await this.TransactionModel.find({
+            chatId: user.chatId,
+          });
+
+          if (userTransactions.length > 0) {
+            const transactionHistory =
+              await transactionHistoryMarkup(userTransactions);
+
+            const replyMarkup = {
+              inline_keyboard: transactionHistory.keyboard,
+            };
+
+            await this.resoBot.sendMessage(
+              query.message.chat.i,
+              transactionHistory.message,
+              {
+                reply_markup: replyMarkup,
+                parse_mode: 'HTML',
+              },
             );
           }
+          return await this.resoBot.sendMessage(
+            query.message.chat.id,
+            `Your have not performed any transaction..`,
+          );
 
         case '/exportWallet':
           if (!user!.svmWalletAddress) {
@@ -970,6 +1093,23 @@ export class ResoBotService {
       await this.resoBot.sendMessage(
         chatId,
         `Reply with the amount of SOL you wish to buy(0 - ${balance}, E.g: 0.1)\nAfter submission, it will be bought immediately`,
+        {
+          reply_markup: {
+            force_reply: true,
+          },
+        },
+      );
+    } catch (error) {
+      console.log(error);
+    }
+  };
+
+  promptTokenCreation = async (chatId: TelegramBot.ChatId) => {
+    try {
+      await this.resoBot.sendChatAction(chatId, 'typing');
+      return await this.resoBot.sendMessage(
+        chatId,
+        `create a token with name "MyToken", symbol "MTK", uri "https://example.com/token", decimal "18", initialSupply of 1000000`,
         {
           reply_markup: {
             force_reply: true,

@@ -12,9 +12,9 @@ export const welcomeMessageMarkup = async (userName: string) => {
           }),
         },
         {
-          text: '💱 Trade Tokens',
+          text: '💱 create Token',
           callback_data: JSON.stringify({
-            command: '/tradeTokens',
+            command: '/createToken',
             language: 'english',
           }),
         },
@@ -36,13 +36,13 @@ export const welcomeMessageMarkup = async (userName: string) => {
         },
       ],
       [
-        {
-          text: '🔔 Price Alerts',
-          callback_data: JSON.stringify({
-            command: '/priceAlerts',
-            language: 'english',
-          }),
-        },
+        // {
+        //   text: '🔔 Price Alerts',
+        //   callback_data: JSON.stringify({
+        //     command: '/priceAlerts',
+        //     language: 'english',
+        //   }),
+        // },
         {
           text: '📜 Transaction History',
           callback_data: JSON.stringify({

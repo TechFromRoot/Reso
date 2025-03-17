@@ -24,6 +24,9 @@ export class Session {
   exportWallet: boolean;
 
   @Prop({ default: false })
+  createToken: boolean;
+
+  @Prop({ default: false })
   resetWallet: boolean;
 
   @Prop({ default: false })

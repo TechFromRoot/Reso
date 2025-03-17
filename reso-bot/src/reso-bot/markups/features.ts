@@ -11,9 +11,9 @@ export const allFeaturesMarkup = async () => {
           }),
         },
         {
-          text: '💱 Trade Tokens',
+          text: '💱 create a Token',
           callback_data: JSON.stringify({
-            command: '/tradeTokens',
+            command: '/createToken',
             language: 'english',
           }),
         },
@@ -28,13 +28,13 @@ export const allFeaturesMarkup = async () => {
         },
       ],
       [
-        {
-          text: '🔔 Price Alerts',
-          callback_data: JSON.stringify({
-            command: '/priceAlerts',
-            language: 'english',
-          }),
-        },
+        // {
+        //   text: '🔔 Price Alerts',
+        //   callback_data: JSON.stringify({
+        //     command: '/priceAlerts',
+        //     language: 'english',
+        //   }),
+        // },
         {
           text: '📜 Transaction History',
           callback_data: JSON.stringify({
