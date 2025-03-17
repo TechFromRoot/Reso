@@ -45,7 +45,7 @@ export const walletFeaturesMarkup = async (user: UserDocument) => {
           }),
         },
         {
-          text: 'check Balance',
+          text: 'Check Balance',
           callback_data: JSON.stringify({
             command: '/checkBalance',
             language: 'english',
@@ -54,7 +54,7 @@ export const walletFeaturesMarkup = async (user: UserDocument) => {
       ],
       [
         {
-          text: 'close ❌',
+          text: 'Close ❌',
           callback_data: JSON.stringify({
             command: '/close',
             language: 'english',

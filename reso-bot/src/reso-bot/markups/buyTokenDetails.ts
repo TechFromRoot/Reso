@@ -57,7 +57,7 @@ export const buyTokenMarkup = async (
     keyboard: [
       [
         {
-          text: 'close ❌',
+          text: 'Close ❌',
           callback_data: JSON.stringify({
             command: '/close',
             language: 'english',
