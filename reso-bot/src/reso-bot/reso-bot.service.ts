@@ -160,12 +160,45 @@ export class ResoBotService {
         if (supportedTokens) {
           const foundToken = supportedTokens.find(
             (token) =>
-              token.address.toLowerCase() === msg.text.trim().toLowerCase(),
+              token.address.toLowerCase() === msg.text!.trim().toLowerCase(),
           );
           if (foundToken) {
             console.log('Found token:', foundToken);
+            const price: any = await this.fetchSupportedTokenPrice(
+              foundToken.address,
+            );
+
+            const pools = await this.fetchPoolInfos(foundToken.address);
+            let poolDetails;
+            if (pools.length > 0) {
+              poolDetails = {
+                liquidity: pools[0].tvl,
+                createdAt: pools[0].openTime,
+              };
+            } else {
+              poolDetails = {
+                liquidity: 0,
+                createdAt: '',
+              };
+            }
+
+            const buyToken = await buyTokenMarkup(
+              foundToken,
+              price,
+              poolDetails,
+            );
+            const replyMarkup = { inline_keyboard: buyToken.keyboard };
+            await this.resoBot.sendMessage(msg.chat.id, buyToken.message, {
+              reply_markup: replyMarkup,
+              parse_mode: 'HTML',
+            });
+            return;
           } else {
-            console.log('Token not found.');
+            await this.resoBot.sendChatAction(msg.chat.id, 'typing');
+            return await this.resoBot.sendMessage(
+              msg.chat.id,
+              'Token not found/ supported',
+            );
           }
         }
       }

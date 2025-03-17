@@ -53,7 +53,7 @@ export const buyTokenMarkup = async (
   poolDetails: any,
 ) => {
   return {
-    message: `<a href="${process.env.SONIC_SCAN_URL}address/${token.address}">${token.symbol} | ${token.name}</a>\n<code>${token.address}</code>\n\n🔄 Dex: SEGA / WhiteList ✅\n✅Liquidity: ${formatNumber(poolDetails.liquidity)}\n\nPrice: $${price || 0}\n\nTo buy press one of the buttons below.`,
+    message: `<a href="${process.env.SONIC_SCAN_URL}address/${token.address}">${token.symbol} | ${token.name}</a>\n<code>${token.address}</code>\n\n🔄 Dex: SEGA / WhiteList ✅\n✅Liquidity: $${formatNumber(poolDetails.liquidity)}\n\nPrice: $${price || 0}\n\nTo buy press one of the buttons below.`,
     keyboard: [
       [
         {
