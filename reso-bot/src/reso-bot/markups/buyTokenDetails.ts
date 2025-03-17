@@ -128,7 +128,7 @@ export const buyTokenMarkup = async (
         {
           text: 'setting',
           callback_data: JSON.stringify({
-            command: '/swapConfig',
+            command: '/settings',
             language: 'english',
           }),
         },

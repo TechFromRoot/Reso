@@ -11,6 +11,7 @@ import { buyTokenMarkup } from './buyTokenDetails';
 import { transactionHistoryMarkup } from './transactionHistory';
 import { manageAssetMarkup } from './manageAsset';
 import { sellTokenMarkup } from './sellTokenDetails';
+import { settingsMarkup } from './setting';
 
 export {
   welcomeMessageMarkup,
@@ -26,4 +27,5 @@ export {
   transactionHistoryMarkup,
   manageAssetMarkup,
   sellTokenMarkup,
+  settingsMarkup,
 };

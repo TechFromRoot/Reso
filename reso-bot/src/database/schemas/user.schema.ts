@@ -26,10 +26,16 @@ export class User {
   @Prop()
   linkCode: string;
 
-  @Prop({ default: 5 }) // Default threshold of 5%
+  @Prop({ default: 10 })
+  buySlippage: string;
+
+  @Prop({ default: 10 })
+  sellSlippage: string;
+
+  @Prop({ default: 5 })
   upperThreshold: number;
 
-  @Prop({ default: 5 }) // Default threshold of 5%
+  @Prop({ default: 5 })
   lowerThreshold: number;
 
   @Prop({

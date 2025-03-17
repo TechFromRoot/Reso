@@ -17,6 +17,7 @@ import {
   transactionHistoryMarkup,
   manageAssetMarkup,
   sellTokenMarkup,
+  settingsMarkup,
 } from './markups';
 import { WalletService } from 'src/wallet/wallet.service';
 import { Session, SessionDocument } from 'src/database/schemas/session.schema';
@@ -153,9 +154,18 @@ export class ResoBotService {
         // Handle text inputs if not a command
         return this.handleUserTextInputs(msg, session!);
       }
+      if (regexAmount.test(msg.text.trim()) && session.buySlippage) {
+        // Handle text inputs if not a command
+        return this.handleUserTextInputs(msg, session!);
+      }
+      if (regexAmount.test(msg.text.trim()) && session.sellSlippage) {
+        // Handle text inputs if not a command
+        return this.handleUserTextInputs(msg, session!);
+      }
       if (
         msg.text !== '/start' &&
         msg.text !== '/menu' &&
+        msg.text !== '/cancel' &&
         msg.text !== '/balance' &&
         session
       ) {
@@ -164,6 +174,7 @@ export class ResoBotService {
       } else if (
         msg.text !== '/start' &&
         msg.text !== '/menu' &&
+        msg.text !== '/cancel' &&
         msg.text !== '/balance' &&
         !session
       ) {
@@ -213,6 +224,13 @@ export class ResoBotService {
             reply_markup: replyMarkup,
           });
         }
+      }
+      if (command === '/cancel') {
+        await this.SessionModel.deleteMany({ chatId: msg.chat.id });
+        return await this.resoBot.sendMessage(
+          msg.chat.id,
+          ' ✅All  active sessions closed successfully',
+        );
       }
       if (command === '/balance') {
         // await this.showBalance(msg.chat.id);
@@ -313,6 +331,55 @@ export class ResoBotService {
           );
         }
       }
+      if (regexAmount.test(msg.text.trim()) && session.buySlippage) {
+        const updatedUser = await this.UserModel.findOneAndUpdate(
+          { chatId: msg.chat.id },
+          { buySlippage: msg.text.trim() },
+          { new: true },
+        );
+        if (updatedUser) {
+          const setting = await settingsMarkup(
+            updatedUser.buySlippage,
+            updatedUser.sellSlippage,
+          );
+          const replyMarkup = { inline_keyboard: setting.keyboard };
+
+          await this.resoBot.editMessageReplyMarkup(replyMarkup, {
+            chat_id: msg.chat.id,
+            message_id: session.messageId,
+          });
+          return await this.resoBot.sendMessage(
+            msg.chat.id,
+            `✅ Buy Slippage set to ${msg.text.trim()}%`,
+          );
+        }
+        return;
+      }
+      if (regexAmount.test(msg.text.trim()) && session.sellSlippage) {
+        const updatedUser = await this.UserModel.findOneAndUpdate(
+          { chatId: msg.chat.id },
+          { sellSlippage: msg.text.trim() },
+          { new: true },
+        );
+        if (updatedUser) {
+          const setting = await settingsMarkup(
+            updatedUser.buySlippage,
+            updatedUser.sellSlippage,
+          );
+          const replyMarkup = { inline_keyboard: setting.keyboard };
+
+          await this.resoBot.editMessageReplyMarkup(replyMarkup, {
+            chat_id: msg.chat.id,
+            message_id: session.messageId,
+          });
+          return await this.resoBot.sendMessage(
+            msg.chat.id,
+            `✅ Sell Slippage set to ${msg.text.trim()}%`,
+          );
+        }
+        return;
+      }
+
       if (regexAmount.test(msg.text.trim()) && session.sellAmount) {
         //TODO: CALL sell SWAP FUNCTION HERE
         const user = await this.UserModel.findOne({
@@ -675,9 +742,9 @@ export class ResoBotService {
     }
 
     const chatId = query.message.chat.id;
+    const messageId = query.message.message_id;
 
     try {
-      await this.resoBot.sendChatAction(chatId, 'typing');
       const user = await this.UserModel.findOne({ chatId: chatId });
       let session: SessionDocument;
       switch (command) {
@@ -843,6 +910,15 @@ export class ResoBotService {
         case '/checkBalance':
           return this.showBalance(chatId);
 
+        case '/refresh':
+          return await this.resoBot.editMessageReplyMarkup(
+            query.message.reply_markup,
+            {
+              chat_id: query.message.chat.id,
+              message_id: query.message.message_id,
+            },
+          );
+
         case '/buyToken':
           return await this.resoBot.sendMessage(
             query.message.chat.id,
@@ -961,7 +1037,7 @@ export class ResoBotService {
               inline_keyboard: transactionHistory.keyboard,
             };
 
-            await this.resoBot.sendMessage(
+            return await this.resoBot.sendMessage(
               query.message.chat.id,
               transactionHistory.message,
               {
@@ -973,6 +1049,51 @@ export class ResoBotService {
           return await this.resoBot.sendMessage(
             query.message.chat.id,
             `Your have not performed any transaction..`,
+          );
+
+        case '/settings':
+          const setting = await settingsMarkup(
+            user.buySlippage,
+            user.sellSlippage,
+          );
+          const replyMarkup = { inline_keyboard: setting.keyboard };
+
+          return await this.resoBot.sendMessage(
+            query.message.chat.id,
+            setting.message,
+            { reply_markup: replyMarkup, parse_mode: 'HTML' },
+          );
+
+        case '/buySlippage':
+          await this.SessionModel.deleteMany({ chatId: chatId });
+          session = await this.SessionModel.create({
+            chatId: chatId,
+            buySlippage: true,
+            messageId: messageId,
+          });
+          if (session) {
+            await this.promptBuySlippage(chatId);
+            return;
+          }
+          return await this.resoBot.sendMessage(
+            query.message.chat.id,
+            `Processing command failed, please try again`,
+          );
+
+        case '/sellSlippage':
+          await this.SessionModel.deleteMany({ chatId: chatId });
+          session = await this.SessionModel.create({
+            chatId: chatId,
+            sellSlippage: true,
+            messageId: messageId,
+          });
+          if (session) {
+            await this.promptSellSlippage(chatId);
+            return;
+          }
+          return await this.resoBot.sendMessage(
+            query.message.chat.id,
+            `Processing command failed, please try again`,
           );
 
         case '/exportWallet':
@@ -1281,6 +1402,38 @@ export class ResoBotService {
       return await this.resoBot.sendMessage(
         chatId,
         `create a token with name "MyToken", symbol "MTK", uri "https://example.com/token", decimal "18", initialSupply of 1000000`,
+        {
+          reply_markup: {
+            force_reply: true,
+          },
+        },
+      );
+    } catch (error) {
+      console.log(error);
+    }
+  };
+
+  promptBuySlippage = async (chatId: TelegramBot.ChatId) => {
+    try {
+      await this.resoBot.sendMessage(
+        chatId,
+        `Reply with your new slippage setting for buys in % (0 - 100%). Example: 10`,
+        {
+          reply_markup: {
+            force_reply: true,
+          },
+        },
+      );
+    } catch (error) {
+      console.log(error);
+    }
+  };
+
+  promptSellSlippage = async (chatId: TelegramBot.ChatId) => {
+    try {
+      await this.resoBot.sendMessage(
+        chatId,
+        `Reply with your new slippage setting for sells in % (0 - 100%). Example: 10`,
         {
           reply_markup: {
             force_reply: true,
