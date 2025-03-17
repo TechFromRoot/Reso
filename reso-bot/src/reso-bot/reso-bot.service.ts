@@ -325,7 +325,7 @@ export class ResoBotService {
         if (encryptedSVMWallet.privateKey) {
           const swapHash = await this.resoDefiAgent.botSellToken(
             encryptedSVMWallet.privateKey,
-            session.tokenAmountAddress,
+            session.sellTokenAmountAddress,
             msg.text.trim(),
             msg.chat.id,
           );

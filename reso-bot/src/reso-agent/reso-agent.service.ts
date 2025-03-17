@@ -123,19 +123,19 @@ export class ResoAgentService {
         swapCompute.data.outputMint,
       );
       const tokenInPrice: any = await this.fetchSupportedTokenPrice(
-        swapCompute.data.inputMint,
+        swapCompute.data.data.inputMint,
       );
       const transactionDetails = new this.TransactionModel({
         chatId: chatId,
-        TokenInAddress: swapCompute.data.inputMint,
+        TokenInAddress: swapCompute.data.data.inputMint,
         TokenInSymbol: inputTokenDetails.symbol,
         TokenInName: inputTokenDetails.name,
-        TokenInAmount: swapCompute.data.inputAmount,
+        TokenInAmount: swapCompute.data.data.inputAmount,
         TokenInPrice: tokenInPrice,
-        TokenOutAddress: swapCompute.data.outputMint,
+        TokenOutAddress: swapCompute.data.data.outputMint,
         TokenOutSymbol: outputTokenDetails.symbol,
         TokenOutName: outputTokenDetails.name,
-        TokenOutAmount: swapCompute.data.outputAmount,
+        TokenOutAmount: swapCompute.data.data.outputAmount,
         hash: signature,
       });
       await transactionDetails.save();
@@ -170,7 +170,6 @@ export class ResoAgentService {
       );
 
       const amount = (balance * parseFloat(amountPercent)) / 100;
-      console.log(amount);
       if (balance < amount) {
         return 'Insufficient balance.';
       }
@@ -237,19 +236,19 @@ export class ResoAgentService {
         throw new Error('Transaction failed');
       }
       const tokenInPrice: any = await this.fetchSupportedTokenPrice(
-        swapCompute.data.inputMint,
+        swapCompute.data.data.inputMint,
       );
       const transactionDetails = new this.TransactionModel({
         chatId: chatId,
-        TokenInAddress: swapCompute.data.inputMint,
+        TokenInAddress: swapCompute.data.data.inputMint,
         TokenInSymbol: inputTokenDetails.symbol,
         TokenInName: inputTokenDetails.name,
-        TokenInAmount: swapCompute.data.inputAmount,
+        TokenInAmount: swapCompute.data.data.inputAmount,
         TokenInPrice: tokenInPrice,
-        TokenOutAddress: swapCompute.data.outputMint,
+        TokenOutAddress: swapCompute.data.data.outputMint,
         TokenOutSymbol: outputTokenDetails.symbol,
         TokenOutName: outputTokenDetails.name,
-        TokenOutAmount: swapCompute.data.outputAmount,
+        TokenOutAmount: swapCompute.data.data.outputAmount,
         hash: signature,
       });
       await transactionDetails.save();
@@ -320,12 +319,14 @@ export class ResoAgentService {
         },
       );
 
-      await getOrCreateAssociatedTokenAccount(
-        connection,
-        userAccount,
-        new PublicKey(inputMint),
-        userAddress,
-      );
+      if (inputMint !== 'So11111111111111111111111111111111111111112') {
+        await getOrCreateAssociatedTokenAccount(
+          connection,
+          userAccount,
+          new PublicKey(inputMint),
+          userAddress,
+        );
+      }
 
       const swapUrl = `${this.SEGA_BASE_URL}swap/transaction/${swapType}`;
       let swapTrx;
@@ -386,25 +387,25 @@ export class ResoAgentService {
         throw new Error('Transaction failed');
       }
       const inputTokenDetails = await this.getTokenDetails(
-        swapCompute.data.inputMint,
+        swapCompute.data.data.inputMint,
       );
       const outputTokenDetails = await this.getTokenDetails(
-        swapCompute.data.outputMint,
+        swapCompute.data.data.outputMint,
       );
       const tokenInPrice: any = await this.fetchSupportedTokenPrice(
-        swapCompute.data.inputMint,
+        swapCompute.data.data.inputMint,
       );
       const transactionDetails = new this.TransactionModel({
         chatId: chatId,
-        TokenInAddress: swapCompute.data.inputMint,
+        TokenInAddress: swapCompute.data.data.inputMint,
         TokenInSymbol: inputTokenDetails.symbol,
         TokenInName: inputTokenDetails.name,
-        TokenInAmount: swapCompute.data.inputAmount,
+        TokenInAmount: swapCompute.data.data.inputAmount,
         TokenInPrice: tokenInPrice,
-        TokenOutAddress: swapCompute.data.outputMint,
+        TokenOutAddress: swapCompute.data.data.outputMint,
         TokenOutSymbol: outputTokenDetails.symbol,
         TokenOutName: outputTokenDetails.name,
-        TokenOutAmount: swapCompute.data.outputAmount,
+        TokenOutAmount: swapCompute.data.data.outputAmount,
         hash: signature,
       });
       await transactionDetails.save();
@@ -472,6 +473,7 @@ export class ResoAgentService {
 
   async getTokenDetails(address: string) {
     try {
+      console.log(address);
       const url = `${this.SEGA_BASE_URL}api/mint/list`;
       const response = await firstValueFrom(this.httpService.get(url));
 
