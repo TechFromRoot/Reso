@@ -432,11 +432,10 @@ export class ResoAgentService {
         try {
             const sonicAgentKit = new SonicAgentKit(
                 pk,
-                'https://api.testnet.sonic.game/',
-                // "https://rpc.mainnet-alpha.sonic.game/",
+                process.env.SONIC_RPC,
                 {
                     OPENAI_API_KEY: process.env.OPENAI_API_KEY,
-                },
+                }
             );
 
             const token = await sonicAgentKit.deployToken(
