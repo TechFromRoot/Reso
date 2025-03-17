@@ -323,23 +323,19 @@ export class ResoBotService {
           user.svmWalletDetails,
         );
         if (encryptedSVMWallet.privateKey) {
+          const swapHash = await this.resoDefiAgent.botSellToken(
+            encryptedSVMWallet.privateKey,
+            session.tokenAmountAddress,
+            msg.text.trim(),
+            msg.chat.id,
+          );
+          if (swapHash) {
+            return await this.resoBot.sendMessage(msg.chat.id, swapHash);
+          }
           return await this.resoBot.sendMessage(
             msg.chat.id,
-            `selling ${msg.text.trim()}% of ${session.sellTokenAmountAddress}`,
+            'Transaction error, please Try again',
           );
-          // const swapHash = await this.resoDefiAgent.botBuyToken(
-          //   encryptedSVMWallet.privateKey,
-          //   session.tokenAmountAddress,
-          //   msg.text.trim(),
-          //   msg.chat.id,
-          // );
-          // if (swapHash) {
-          //   return await this.resoBot.sendMessage(msg.chat.id, swapHash);
-          // }
-          // return await this.resoBot.sendMessage(
-          //   msg.chat.id,
-          //   'Transaction error, please Try again',
-          // );
         }
       }
       if (matchCreateToken && session.createToken) {
@@ -932,26 +928,22 @@ export class ResoBotService {
               );
             //TODO: call SELL swap function here
             if (encryptedSVMWallet.privateKey) {
+              const swapHash = await this.resoDefiAgent.botSellToken(
+                encryptedSVMWallet.privateKey,
+                tokenAddress,
+                `${sell_amountPerc}`,
+                query.message.chat.id,
+              );
+              if (swapHash) {
+                return await this.resoBot.sendMessage(
+                  query.message.chat.id,
+                  swapHash,
+                );
+              }
               return await this.resoBot.sendMessage(
                 query.message.chat.id,
-                `selling ${sell_amountPerc}% of ${tokenAddress}`,
+                'Transaction error, please Try again',
               );
-              // const swapHash = await this.resoDefiAgent.botBuyToken(
-              //   encryptedSVMWallet.privateKey,
-              //   tokenAddress,
-              //   `${buy_amount}`,
-              //   query.message.chat.id,
-              // );
-              // if (swapHash) {
-              //   return await this.resoBot.sendMessage(
-              //     query.message.chat.id,
-              //     swapHash,
-              //   );
-              // }
-              // return await this.resoBot.sendMessage(
-              //   query.message.chat.id,
-              //   'Transaction error, please Try again',
-              // );
             }
             return;
           }
@@ -970,7 +962,7 @@ export class ResoBotService {
             };
 
             await this.resoBot.sendMessage(
-              query.message.chat.i,
+              query.message.chat.id,
               transactionHistory.message,
               {
                 reply_markup: replyMarkup,
