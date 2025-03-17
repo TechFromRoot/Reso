@@ -9,6 +9,8 @@ import { walletFeaturesMarkup } from './walletFeatures';
 import { showPortfolioMarkup } from './showPortfolio';
 import { buyTokenMarkup } from './buyTokenDetails';
 import { transactionHistoryMarkup } from './transactionHistory';
+import { manageAssetMarkup } from './manageAsset';
+import { sellTokenMarkup } from './sellTokenDetails';
 
 export {
   welcomeMessageMarkup,
@@ -22,4 +24,6 @@ export {
   showPortfolioMarkup,
   buyTokenMarkup,
   transactionHistoryMarkup,
+  manageAssetMarkup,
+  sellTokenMarkup,
 };

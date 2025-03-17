@@ -15,6 +15,8 @@ import {
   walletFeaturesMarkup,
   welcomeMessageMarkup,
   transactionHistoryMarkup,
+  manageAssetMarkup,
+  sellTokenMarkup,
 } from './markups';
 import { WalletService } from 'src/wallet/wallet.service';
 import { Session, SessionDocument } from 'src/database/schemas/session.schema';
@@ -65,9 +67,74 @@ export class ResoBotService {
       const tokenCreationRegex =
         /create a token with name\s+"([^"]+)",\s+symbol\s+"([^"]+)",\s+uri\s+"([^"]+)"\s*,decimal\s+"(\d+)",\s+initialSupply of (\d+)/;
       const matchCreateToken = msg.text.trim().match(tokenCreationRegex);
+      const regexPosition = /\/start\s+position_([a-zA-Z0-9]{43,})/;
+      const matchPosition = msg.text.trim().match(regexPosition);
       const swapRegex = /\b(swap)\b/i;
       const match = msg.text.trim().match(regex);
       const match2 = msg.text.trim().match(regex2);
+      if (matchPosition) {
+        await this.resoBot.deleteMessage(msg.chat.id, msg.message_id);
+        const supportedTokens = await this.fetchSupportedTokenList();
+        if (supportedTokens) {
+          const foundToken = supportedTokens.find(
+            (token) =>
+              token.address.toLowerCase() === matchPosition[1].toLowerCase(),
+          );
+          if (foundToken) {
+            console.log('Found token:', foundToken);
+            const price: any = await this.fetchSupportedTokenPrice(
+              foundToken.address,
+            );
+            const { balance: tokenBalance } =
+              await this.walletService.getToken2022Balance(
+                user.svmWalletAddress,
+                matchPosition[1],
+                process.env.SONIC_RPC,
+                foundToken.decimals,
+                foundToken.programId,
+              );
+            const { balance: solBalance } =
+              await this.walletService.getSolBalance(
+                user.svmWalletAddress,
+                process.env.SONIC_RPC,
+              );
+            const pools = await this.fetchPoolInfos(foundToken.address);
+            let poolDetails;
+            if (pools.length > 0) {
+              poolDetails = {
+                liquidity: pools[0].tvl,
+                createdAt: pools[0].openTime,
+              };
+            } else {
+              poolDetails = {
+                liquidity: 0,
+                createdAt: '',
+              };
+            }
+
+            const buyToken = await sellTokenMarkup(
+              foundToken,
+              price,
+              poolDetails,
+              tokenBalance,
+              solBalance,
+            );
+            const replyMarkup = { inline_keyboard: buyToken.keyboard };
+            await this.resoBot.sendMessage(msg.chat.id, buyToken.message, {
+              reply_markup: replyMarkup,
+              parse_mode: 'HTML',
+            });
+            return;
+          } else {
+            await this.resoBot.sendChatAction(msg.chat.id, 'typing');
+            return await this.resoBot.sendMessage(
+              msg.chat.id,
+              'Token not found/ supported',
+            );
+          }
+        }
+        console.log('contract address :', matchPosition[1]);
+      }
       if (
         (swapRegex.test(msg.text.trim()) ||
           match ||
@@ -79,6 +146,10 @@ export class ResoBotService {
         return this.handleAgentprompts(user, msg.text.trim());
       }
       if (regexAmount.test(msg.text.trim()) && session.tokenAmount) {
+        // Handle text inputs if not a command
+        return this.handleUserTextInputs(msg, session!);
+      }
+      if (regexAmount.test(msg.text.trim()) && session.sellAmount) {
         // Handle text inputs if not a command
         return this.handleUserTextInputs(msg, session!);
       }
@@ -240,6 +311,35 @@ export class ResoBotService {
             msg.chat.id,
             'Transaction error, please Try again',
           );
+        }
+      }
+      if (regexAmount.test(msg.text.trim()) && session.sellAmount) {
+        //TODO: CALL sell SWAP FUNCTION HERE
+        const user = await this.UserModel.findOne({
+          chatId: msg.chat.id,
+        });
+        const encryptedSVMWallet = await this.walletService.decryptSVMWallet(
+          `${process.env.DEFAULT_WALLET_PIN}`,
+          user.svmWalletDetails,
+        );
+        if (encryptedSVMWallet.privateKey) {
+          return await this.resoBot.sendMessage(
+            msg.chat.id,
+            `selling ${msg.text.trim()}% of ${session.sellTokenAmountAddress}`,
+          );
+          // const swapHash = await this.resoDefiAgent.botBuyToken(
+          //   encryptedSVMWallet.privateKey,
+          //   session.tokenAmountAddress,
+          //   msg.text.trim(),
+          //   msg.chat.id,
+          // );
+          // if (swapHash) {
+          //   return await this.resoBot.sendMessage(msg.chat.id, swapHash);
+          // }
+          // return await this.resoBot.sendMessage(
+          //   msg.chat.id,
+          //   'Transaction error, please Try again',
+          // );
         }
       }
       if (matchCreateToken && session.createToken) {
@@ -545,6 +645,8 @@ export class ResoBotService {
     this.logger.debug(query);
     let command: string;
     let buy_addressCommand: string;
+    let sell_addressCommand: string;
+    let sell_amountPerc: number;
     let buy_amount: number;
     let tokenAddress: string;
 
@@ -565,6 +667,10 @@ export class ResoBotService {
         buy_addressCommand = parsedData.c;
         buy_amount = parsedData.a;
         [command, tokenAddress] = buy_addressCommand.split('|');
+      } else if (parsedData.s) {
+        sell_addressCommand = parsedData.s;
+        sell_amountPerc = parsedData.a;
+        [command, tokenAddress] = sell_addressCommand.split('|');
       } else if (parsedData.command) {
         command = parsedData.command;
       }
@@ -807,6 +913,49 @@ export class ResoBotService {
             return;
           }
 
+        case '/sel':
+          await this.resoBot.sendChatAction(chatId, 'typing');
+          if (sell_amountPerc == 0) {
+            return await this.promptSellPercentageAmount(
+              query.message.chat.id,
+              tokenAddress,
+            );
+          } else {
+            await this.SessionModel.deleteMany({
+              chatId: query.message.chat.id,
+            });
+
+            const encryptedSVMWallet =
+              await this.walletService.decryptSVMWallet(
+                `${process.env.DEFAULT_WALLET_PIN}`,
+                user.svmWalletDetails,
+              );
+            //TODO: call SELL swap function here
+            if (encryptedSVMWallet.privateKey) {
+              return await this.resoBot.sendMessage(
+                query.message.chat.id,
+                `selling ${sell_amountPerc}% of ${tokenAddress}`,
+              );
+              // const swapHash = await this.resoDefiAgent.botBuyToken(
+              //   encryptedSVMWallet.privateKey,
+              //   tokenAddress,
+              //   `${buy_amount}`,
+              //   query.message.chat.id,
+              // );
+              // if (swapHash) {
+              //   return await this.resoBot.sendMessage(
+              //     query.message.chat.id,
+              //     swapHash,
+              //   );
+              // }
+              // return await this.resoBot.sendMessage(
+              //   query.message.chat.id,
+              //   'Transaction error, please Try again',
+              // );
+            }
+            return;
+          }
+
         case '/transactionHistory':
           const userTransactions = await this.TransactionModel.find({
             chatId: user.chatId,
@@ -889,6 +1038,9 @@ export class ResoBotService {
 
         case '/resetWallet':
           return this.showResetWalletWarning(chatId);
+
+        case '/manageAsset':
+          return this.showAsset(chatId);
 
         case '/confirmReset':
           // delete any existing session if any
@@ -1104,6 +1256,33 @@ export class ResoBotService {
     }
   };
 
+  promptSellPercentageAmount = async (
+    chatId: TelegramBot.ChatId,
+    tokenAddress: string,
+  ) => {
+    try {
+      await this.resoBot.sendChatAction(chatId, 'typing');
+      await this.SessionModel.deleteMany({ chatId: chatId });
+
+      await this.SessionModel.create({
+        chatId: chatId,
+        sellAmount: true,
+        sellTokenAmountAddress: tokenAddress,
+      });
+      await this.resoBot.sendMessage(
+        chatId,
+        `Reply with the percentage amount you wish to sell (0 - 100 %)\nAfter submission, it will be sold immediately`,
+        {
+          reply_markup: {
+            force_reply: true,
+          },
+        },
+      );
+    } catch (error) {
+      console.log(error);
+    }
+  };
+
   promptTokenCreation = async (chatId: TelegramBot.ChatId) => {
     try {
       await this.resoBot.sendChatAction(chatId, 'typing');
@@ -1225,6 +1404,25 @@ export class ResoBotService {
       }
     } catch (error) {
       console.log('General error in showBalance:', error);
+    }
+  };
+
+  showAsset = async (chatId: TelegramBot.ChatId) => {
+    try {
+      const allAssetBalance = await this.showBalance(chatId, false);
+      if (allAssetBalance) {
+        const showAsset = await manageAssetMarkup(allAssetBalance);
+        if (showAsset) {
+          const replyMarkup = { inline_keyboard: showAsset.keyboard };
+
+          return await this.resoBot.sendMessage(chatId, showAsset.message, {
+            parse_mode: 'HTML',
+            reply_markup: replyMarkup,
+          });
+        }
+      }
+    } catch (error) {
+      console.log(error);
     }
   };
 

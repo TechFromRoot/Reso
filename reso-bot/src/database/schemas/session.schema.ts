@@ -41,6 +41,12 @@ export class Session {
   @Prop()
   tokenAmountAddress: string;
 
+  @Prop({ default: false })
+  sellAmount: boolean;
+
+  @Prop()
+  sellTokenAmountAddress: string;
+
   @Prop()
   importWalletPromptInputId: number[];
 

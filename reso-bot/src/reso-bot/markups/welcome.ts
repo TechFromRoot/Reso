@@ -30,7 +30,7 @@ export const welcomeMessageMarkup = async (userName: string) => {
         {
           text: '💰 Assets',
           callback_data: JSON.stringify({
-            command: '/checkBalance',
+            command: '/manageAsset',
             language: 'english',
           }),
         },

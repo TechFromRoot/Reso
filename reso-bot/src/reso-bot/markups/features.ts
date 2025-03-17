@@ -26,6 +26,13 @@ export const allFeaturesMarkup = async () => {
             language: 'english',
           }),
         },
+        {
+          text: '💰 Assets',
+          callback_data: JSON.stringify({
+            command: '/manageAsset',
+            language: 'english',
+          }),
+        },
       ],
       [
         // {
