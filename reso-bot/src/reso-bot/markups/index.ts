@@ -7,6 +7,7 @@ import { displayPrivateKeyMarkup } from './displayPrivateKey';
 import { resetWalletWarningMarkup } from './resetWalletWarning';
 import { walletFeaturesMarkup } from './walletFeatures';
 import { showPortfolioMarkup } from './showPortfolio';
+import { buyTokenMarkup } from './buyTokenDetails';
 
 export {
   welcomeMessageMarkup,
@@ -18,4 +19,5 @@ export {
   resetWalletWarningMarkup,
   walletFeaturesMarkup,
   showPortfolioMarkup,
+  buyTokenMarkup,
 };

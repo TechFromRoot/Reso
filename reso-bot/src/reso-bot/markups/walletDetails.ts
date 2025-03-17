@@ -1,4 +1,7 @@
-export const walletDetailsMarkup = async (svmAddress?: string) => {
+export const walletDetailsMarkup = async (
+  svmAddress?: string,
+  balance?: any,
+) => {
   const keyboard: any[] = [];
 
   if (svmAddress) {
@@ -39,7 +42,7 @@ export const walletDetailsMarkup = async (svmAddress?: string) => {
   );
   return {
     message: `<b>Your Wallet</b>\n\n
-  ${svmAddress ? `<b>Solana Address:</b> <code>${svmAddress}</code>\n` : ''}\nTap to copy the address and send tokens to deposit.`,
+  ${svmAddress ? `<b>Address:</b> <code>${svmAddress}</code>\n  Balance: ${balance} SOL` : ''}\nTap to copy the address and send tokens to deposit.`,
     keyboard,
   };
 };

@@ -5,6 +5,7 @@ import { Model } from 'mongoose';
 import { InjectModel } from '@nestjs/mongoose';
 import { User, UserDocument } from '../database/schemas/user.schema';
 import {
+  buyTokenMarkup,
   allFeaturesMarkup,
   displayPrivateKeyMarkup,
   exportWalletWarningMarkup,
@@ -54,6 +55,7 @@ export class ResoBotService {
 
       const regex2 = /^0x[a-fA-F0-9]{40}$/;
       const regex = /^Swap (?:also )?(\d+\.?\d*) (\w+) (?:to|for) (\w+)$/i;
+      const regexAmount = /^\d+(\.\d+)?$/;
 
       const swapRegex = /\b(swap)\b/i;
       const match = msg.text.trim().match(regex);
@@ -62,14 +64,17 @@ export class ResoBotService {
         console.log(msg.text.trim());
         return this.handleAgentprompts(user, msg.text.trim());
       }
-
-      // Handle text inputs if not a command
+      if (regexAmount.test(msg.text.trim()) && session.tokenAmount) {
+        // Handle text inputs if not a command
+        return this.handleUserTextInputs(msg, session!);
+      }
       if (
         msg.text !== '/start' &&
         msg.text !== '/menu' &&
         msg.text !== '/balance' &&
         session
       ) {
+        // Handle text inputs if not a command
         return this.handleUserTextInputs(msg, session!);
       } else if (
         msg.text !== '/start' &&
@@ -140,12 +145,37 @@ export class ResoBotService {
   ) => {
     await this.resoBot.sendChatAction(msg.chat.id, 'typing');
     try {
+      const regexAmount = /^\d+(\.\d+)?$/;
       //   const regex2 = /^0x[a-fA-F0-9]{40}$/;
       //   const regex = /^Swap (?:also )?(\d+\.?\d*) (\w+) (?:to|for) (\w+)$/i;
       const swapRegex = /\b(swap)\b/i;
       //   const match = msg.text.trim().match(regex);
       //   const match2 = msg.text.trim().match(regex2);
       console.log(msg.text.trim());
+      const isTokenAddress = await this.isTokenAddress(msg.text!.trim());
+
+      // detects when a user sends a token address
+      if (isTokenAddress.isValid) {
+        const supportedTokens = await this.fetchSupportedTokenList();
+        if (supportedTokens) {
+          const foundToken = supportedTokens.find(
+            (token) =>
+              token.address.toLowerCase() === msg.text.trim().toLowerCase(),
+          );
+          if (foundToken) {
+            console.log('Found token:', foundToken);
+          } else {
+            console.log('Token not found.');
+          }
+        }
+      }
+      if (regexAmount.test(msg.text.trim()) && session.tokenAmount) {
+        //TODO: CALL SWAP FUNCTION HERE
+        return await this.resoBot.sendMessage(
+          msg.chat.id,
+          `Buying ${msg.text.trim()} SOL of ${session.tokenAmountAddress}`,
+        );
+      }
 
       if (swapRegex.test(msg.text.trim())) {
         const user = await this.UserModel.findOne({ chatId: msg.chat.id });
@@ -327,6 +357,56 @@ export class ResoBotService {
       const swapRegex = /\b(swap)\b/i;
       const match = msg.trim().match(regex);
       const match2 = msg.trim().match(regex2);
+      const isTokenAddress = await this.isTokenAddress(msg.trim());
+
+      console.log(isTokenAddress);
+      // detects when a user sends a token address
+      if (isTokenAddress.isValid) {
+        const supportedTokens = await this.fetchSupportedTokenList();
+        if (supportedTokens) {
+          const foundToken = supportedTokens.find(
+            (token) => token.address.toLowerCase() === msg.trim().toLowerCase(),
+          );
+          if (foundToken) {
+            console.log('Found token:', foundToken);
+            const price: any = await this.fetchSupportedTokenPrice(
+              foundToken.address,
+            );
+
+            const pools = await this.fetchPoolInfos(foundToken.address);
+            let poolDetails;
+            if (pools.length > 0) {
+              poolDetails = {
+                liquidity: pools[0].tvl,
+                createdAt: pools[0].openTime,
+              };
+            } else {
+              poolDetails = {
+                liquidity: 0,
+                createdAt: '',
+              };
+            }
+
+            const buyToken = await buyTokenMarkup(
+              foundToken,
+              price,
+              poolDetails,
+            );
+            const replyMarkup = { inline_keyboard: buyToken.keyboard };
+            await this.resoBot.sendMessage(user.chatId, buyToken.message, {
+              reply_markup: replyMarkup,
+              parse_mode: 'HTML',
+            });
+            return;
+          } else {
+            await this.resoBot.sendChatAction(user.chatId, 'typing');
+            return await this.resoBot.sendMessage(
+              user.chatId,
+              'Token not found/ supported',
+            );
+          }
+        }
+      }
       if (swapRegex.test(msg.trim())) {
         await this.resoBot.sendChatAction(user.chatId, 'typing');
 
@@ -381,6 +461,9 @@ export class ResoBotService {
   handleButtonCommands = async (query: any) => {
     this.logger.debug(query);
     let command: string;
+    let buy_addressCommand: string;
+    let buy_amount: number;
+    let tokenAddress: string;
 
     function isJSON(str) {
       try {
@@ -393,7 +476,15 @@ export class ResoBotService {
     }
 
     if (isJSON(query.data)) {
-      command = JSON.parse(query.data).command;
+      const parsedData = JSON.parse(query.data);
+
+      if (parsedData.c) {
+        buy_addressCommand = parsedData.c;
+        buy_amount = parsedData.a;
+        [command, tokenAddress] = buy_addressCommand.split('|');
+      } else if (parsedData.command) {
+        command = parsedData.command;
+      }
     } else {
       command = query.data;
     }
@@ -406,14 +497,17 @@ export class ResoBotService {
       let session: SessionDocument;
       switch (command) {
         case '/menu':
+          await this.resoBot.sendChatAction(chatId, 'typing');
           await this.sendAllFeature(user);
           return;
 
         case '/walletFeatures':
-          await this.sendAllWalletFeature(chatId);
+          await this.resoBot.sendChatAction(chatId, 'typing');
+          await this.sendAllWalletFeature(chatId, user);
           return;
 
         case '/enableRebalance':
+          await this.resoBot.sendChatAction(chatId, 'typing');
           if (user && !user.rebalanceEnabled) {
             await this.UserModel.updateOne(
               { chatId },
@@ -430,6 +524,7 @@ export class ResoBotService {
           return;
 
         case '/disableAgenticSwap':
+          await this.resoBot.sendChatAction(chatId, 'typing');
           if (user && user.enableAgenticAutoSwap) {
             await this.UserModel.updateOne(
               { chatId },
@@ -452,6 +547,7 @@ export class ResoBotService {
           return;
 
         case '/createWallet':
+          await this.resoBot.sendChatAction(chatId, 'typing');
           // check if user already have a wallet
           if (user!.svmWalletAddress) {
             return this.sendWalletDetails(chatId, user);
@@ -477,6 +573,7 @@ export class ResoBotService {
           return await this.sendWalletDetails(chatId, updatedUser);
 
         case '/linkWallet':
+          await this.resoBot.sendChatAction(chatId, 'typing');
           // check if user already have a wallet
           if (user!.svmWalletAddress) {
             await this.resoBot.sendMessage(
@@ -536,9 +633,50 @@ export class ResoBotService {
         case '/checkBalance':
           return this.showBalance(chatId);
 
-        case '/portfolioOverview':
-          return;
-        //   return this.showUserPortfolio(user);
+        case '/buyToken':
+          return await this.resoBot.sendMessage(
+            query.message.chat.id,
+            `<b>Buy Token:</b>\n\nTo buy a token, enter the token address`,
+            {
+              parse_mode: 'HTML',
+              reply_markup: {
+                inline_keyboard: [
+                  [
+                    {
+                      text: 'Close ❌',
+                      callback_data: JSON.stringify({
+                        command: '/close',
+                        language: 'english',
+                      }),
+                    },
+                  ],
+                ],
+              },
+            },
+          );
+
+        case '/buy':
+          await this.resoBot.sendChatAction(chatId, 'typing');
+          const { balance } = await this.walletService.getSolBalance(
+            user.svmWalletAddress,
+            process.env.SONIC_RPC,
+          );
+          if (buy_amount == 0) {
+            return await this.promptBuyAmount(
+              query.message.chat.id,
+              balance,
+              tokenAddress,
+            );
+          } else {
+            await this.SessionModel.deleteMany({
+              chatId: query.message.chat.id,
+            });
+            //TODO: call swap function here
+            return await this.resoBot.sendMessage(
+              query.message.chat.id,
+              `Buying ${buy_amount} SOL of ${tokenAddress}`,
+            );
+          }
 
         case '/exportWallet':
           if (!user!.svmWalletAddress) {
@@ -709,10 +847,10 @@ export class ResoBotService {
     }
   };
 
-  sendAllWalletFeature = async (chatId: any) => {
+  sendAllWalletFeature = async (chatId: any, user: UserDocument) => {
     try {
       await this.resoBot.sendChatAction(chatId, 'typing');
-      const allWalletFeatures = await walletFeaturesMarkup();
+      const allWalletFeatures = await walletFeaturesMarkup(user);
       if (allWalletFeatures) {
         const replyMarkup = {
           inline_keyboard: allWalletFeatures.keyboard,
@@ -733,7 +871,14 @@ export class ResoBotService {
   ) => {
     await this.resoBot.sendChatAction(ChatId, 'typing');
     try {
-      const walletDetails = await walletDetailsMarkup(user.svmWalletAddress);
+      const { balance } = await this.walletService.getSolBalance(
+        user.svmWalletAddress,
+        process.env.SONIC_RPC,
+      );
+      const walletDetails = await walletDetailsMarkup(
+        user.svmWalletAddress,
+        balance,
+      );
       if (walletDetailsMarkup!) {
         const replyMarkup = {
           inline_keyboard: walletDetails.keyboard,
@@ -770,6 +915,34 @@ export class ResoBotService {
           },
         );
       }
+    } catch (error) {
+      console.log(error);
+    }
+  };
+
+  promptBuyAmount = async (
+    chatId: TelegramBot.ChatId,
+    balance: any,
+    tokenAddress: string,
+  ) => {
+    try {
+      await this.resoBot.sendChatAction(chatId, 'typing');
+      await this.SessionModel.deleteMany({ chatId: chatId });
+
+      await this.SessionModel.create({
+        chatId: chatId,
+        tokenAmount: true,
+        tokenAmountAddress: tokenAddress,
+      });
+      await this.resoBot.sendMessage(
+        chatId,
+        `Reply with the amount of SOL you wish to buy(0 - ${balance}, E.g: 0.1)\nAfter submission, it will be bought immediately`,
+        {
+          reply_markup: {
+            force_reply: true,
+          },
+        },
+      );
     } catch (error) {
       console.log(error);
     }
@@ -954,6 +1127,18 @@ export class ResoBotService {
     }
 
     return { isValid: false, walletType: null };
+  };
+
+  // utitlity functions
+  isTokenAddress = async (input: string): Promise<{ isValid: boolean }> => {
+    const trimmedInput = input.trim();
+    const tokenAddressRegex = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+
+    if (tokenAddressRegex.test(trimmedInput)) {
+      return { isValid: true };
+    }
+
+    return { isValid: false };
   };
 
   displayWalletPrivateKey = async (
@@ -1162,19 +1347,61 @@ export class ResoBotService {
 
       const tokenList = fetchTokenList.data.data;
       if (tokenList && tokenList.mintList.length > 0) {
-        const filteredTokens = tokenList.mintList.map((token: Token) => {
-          return {
-            address: token.address,
-            programId: token.programId,
-            symbol: token.symbol,
-            name: token.name,
-            decimals: token.decimals,
-          };
-        });
+        const filteredTokens: Token[] = tokenList.mintList.map(
+          (token: Token) => {
+            return {
+              address: token.address,
+              programId: token.programId,
+              symbol: token.symbol,
+              name: token.name,
+              decimals: token.decimals,
+            };
+          },
+        );
         return filteredTokens;
       }
     } catch (error) {
       console.log(error);
     }
+  };
+
+  fetchSupportedTokenPrice = async (address: string) => {
+    try {
+      const response = await this.httpService.axiosRef.get(
+        `https://api.sega.so/api/mint/price?mints=${address}`,
+      );
+      const price = Object.values(response.data.data)[0];
+      return price;
+    } catch (error) {
+      console.log(error);
+    }
+  };
+
+  fetchPoolInfos = async (mint?: string) => {
+    try {
+      const response = await this.httpService.axiosRef.get(
+        `https://api.sega.so/api/pools/info/list?page=1&pageSize=10`,
+      );
+      const pools = response.data.data.data;
+      if (pools && pools.length > 0) {
+        if (mint) {
+          return this.filterPoolsByMintAddress(pools, mint);
+        }
+        return pools;
+      }
+      return;
+    } catch (error) {
+      console.log(error);
+    }
+  };
+
+  filterPoolsByMintAddress = (pools, mintBAddress) => {
+    const targetMintAAddress = 'So11111111111111111111111111111111111111112';
+
+    return pools.filter(
+      (pool) =>
+        pool.mintA.address === targetMintAAddress &&
+        pool.mintB.address.toLowerCase() === mintBAddress.toLowerCase(),
+    );
   };
 }

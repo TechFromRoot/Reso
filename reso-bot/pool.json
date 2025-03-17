@@ -1,0 +1,93 @@
+{
+  "type": "Standard",
+  "programId": "SegazTQwbYWknDZkJ6j2Kgvm5gw3MrHGKtWstZdoNKZ",
+  "id": "DgMweMfMbmPFChTuAvTf4nriQDWpf9XX3g66kod9nsR4",
+  "mintA": {
+    "chainId": 100,
+    "address": "So11111111111111111111111111111111111111112",
+    "programId": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "logoURI": "https://img.sega.so/icon/So11111111111111111111111111111111111111112.png",
+    "symbol": "WSOL",
+    "name": "Wrapped SOL",
+    "decimals": 9,
+    "tags": [],
+    "extensions": {}
+  },
+  "mintB": {
+    "chainId": 100,
+    "address": "mrujEYaN1oyQXDHeYNxBYpxWKVkQ2XsGxfznpifu4aL",
+    "programId": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+    "logoURI": "https://arweave.net/599UDQd5YAUfesAJCTNZ-4ELWLHX5pbid-ahpoJ-w1A",
+    "symbol": "SONIC",
+    "name": "Sonic SVM",
+    "decimals": 9,
+    "tags": [],
+    "extensions": {}
+  },
+  "price": 490.08006222149635,
+  "mintAmountA": 35.062384025,
+  "mintAmountB": 17183.375344606,
+  "feeRate": 2500,
+  "openTime": "1740601472",
+  "tvl": 8545.44,
+  "day": {
+    "volume": 44,
+    "volumeQuote": 0,
+    "volumeFee": 0.11,
+    "apr": 0.0043,
+    "feeApr": 0.0043,
+    "priceMin": 0,
+    "priceMax": 0,
+    "rewardApr": []
+  },
+  "week": {
+    "volume": 1283,
+    "volumeQuote": 0,
+    "volumeFee": 3.19,
+    "apr": 0.0164,
+    "feeApr": 0.0164,
+    "priceMin": 0,
+    "priceMax": 0,
+    "rewardApr": []
+  },
+  "month": {
+    "volume": 2813,
+    "volumeQuote": 0,
+    "volumeFee": 6.98,
+    "apr": 0.0083,
+    "feeApr": 0.0083,
+    "priceMin": 0,
+    "priceMax": 0,
+    "rewardApr": []
+  },
+  "pooltype": [],
+  "rewardDefaultInfos": [],
+  "farmUpcomingCount": 0,
+  "farmOngoingCount": 0,
+  "farmFinishedCount": 0,
+  "marketId": "Bkxq43SaKWjCL7tqWKoiX9hTaCHKBw8XnLwzDa6Ckork",
+  "lpMint": {
+    "chainId": 0,
+    "address": "CcBJfLjafxyrtuPsf2fLu8JbMD6TMW2CdNdMrbJ2jreg",
+    "programId": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "logoURI": "",
+    "symbol": "",
+    "name": "",
+    "decimals": 9,
+    "tags": [],
+    "extensions": {}
+  },
+  "lpPrice": 11.043812232529259,
+  "lpAmount": 773.776284862,
+  "rewardDefaultPoolInfos": "Ecosystem",
+  "config": {
+    "id": "Bkxq43SaKWjCL7tqWKoiX9hTaCHKBw8XnLwzDa6Ckork",
+    "index": 0,
+    "protocolFeeRate": 120000,
+    "tradeFeeRate": 2500,
+    "tickSpacing": 0,
+    "fundFeeRate": 40000,
+    "defaultRange": 0,
+    "defaultRangePoint": []
+  }
+}

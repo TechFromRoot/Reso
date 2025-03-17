@@ -1,10 +1,12 @@
-export const walletFeaturesMarkup = async () => {
+import { UserDocument } from 'src/database/schemas/user.schema';
+
+export const walletFeaturesMarkup = async (user: UserDocument) => {
   return {
     message: `Choose an action below to manage your wallet 👇`,
     keyboard: [
       [
         {
-          text: 'Create wallet 💳',
+          text: `${user.svmWalletAddress ? 'View Wallet 💳' : 'Create wallet 💳'}`,
           callback_data: JSON.stringify({
             command: '/createWallet',
             language: 'english',
