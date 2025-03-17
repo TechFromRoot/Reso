@@ -102,10 +102,14 @@ export class ResoBotService {
             const pools = await this.fetchPoolInfos(foundToken.address);
             let poolDetails;
             if (pools.length > 0) {
-              poolDetails = {
-                liquidity: pools[0].tvl,
-                createdAt: pools[0].openTime,
-              };
+              poolDetails = [];
+              for (const pool of pools) {
+                poolDetails.push({
+                  liquidity: pool.tvl,
+                  createdAt: pool.openTime,
+                  source: pool.source,
+                });
+              }
             } else {
               poolDetails = {
                 liquidity: 0,
@@ -275,12 +279,17 @@ export class ResoBotService {
             );
 
             const pools = await this.fetchPoolInfos(foundToken.address);
+            console.log('This is pool :', pools);
             let poolDetails;
             if (pools.length > 0) {
-              poolDetails = {
-                liquidity: pools[0].tvl,
-                createdAt: pools[0].openTime,
-              };
+              poolDetails = [];
+              for (const pool of pools) {
+                poolDetails.push({
+                  liquidity: pool.tvl,
+                  createdAt: pool.openTime,
+                  source: pool.source,
+                });
+              }
             } else {
               poolDetails = {
                 liquidity: 0,
@@ -630,15 +639,22 @@ export class ResoBotService {
             const pools = await this.fetchPoolInfos(foundToken.address);
             let poolDetails;
             if (pools.length > 0) {
-              poolDetails = {
-                liquidity: pools[0].tvl,
-                createdAt: pools[0].openTime,
-              };
+              poolDetails = [];
+              for (const pool of pools) {
+                poolDetails.push({
+                  liquidity: pool.tvl,
+                  createdAt: pool.openTime,
+                  source: pool.source,
+                });
+              }
             } else {
-              poolDetails = {
-                liquidity: 0,
-                createdAt: '',
-              };
+              poolDetails = [
+                {
+                  liquidity: 0,
+                  createdAt: '',
+                  source: '',
+                },
+              ];
             }
 
             const buyToken = await buyTokenMarkup(
@@ -1904,21 +1920,47 @@ export class ResoBotService {
   };
 
   fetchPoolInfos = async (mint?: string) => {
+    let segaPools: any[] = [];
+    let solarPools: any[] = [];
+
+    // Fetch from Sega with independent error handling
     try {
-      const response = await this.httpService.axiosRef.get(
+      const segaResponse = await this.httpService.axiosRef.get(
         `https://api.sega.so/api/pools/info/list?page=1&pageSize=10`,
       );
-      const pools = response.data.data.data;
-      if (pools && pools.length > 0) {
-        if (mint) {
-          return this.filterPoolsByMintAddress(pools, mint);
-        }
-        return pools;
-      }
-      return;
-    } catch (error) {
-      console.log(error);
+      segaPools = (segaResponse.data.data.data || []).map((pool) => ({
+        ...pool,
+        source: 'SEGA',
+      }));
+    } catch (segaError) {
+      console.log('Sega API call failed:', segaError);
+      // Continue with empty segaPools array
     }
+
+    // Fetch from Solar with independent error handling
+    try {
+      const solarResponse = await this.httpService.axiosRef.get(
+        `https://sonicapi.solarstudios.co/pools/info/list?page=1&pageSize=100&poolType=all&poolSortField=liquidity&sortType=desc`,
+      );
+      solarPools = (solarResponse.data.data.data || []).map((pool) => ({
+        ...pool,
+        source: 'SOLAR',
+      }));
+    } catch (solarError) {
+      console.log('Solar API call failed:', solarError);
+      // Continue with empty solarPools array
+    }
+
+    // Combine whatever pools we successfully got
+    const allPools = [...segaPools, ...solarPools];
+
+    if (allPools.length > 0) {
+      if (mint) {
+        return this.filterPoolsByMintAddress(allPools, mint);
+      }
+      return allPools;
+    }
+    return [];
   };
 
   filterPoolsByMintAddress = (pools, mintBAddress) => {
@@ -1926,8 +1968,36 @@ export class ResoBotService {
 
     return pools.filter(
       (pool) =>
-        pool.mintA.address === targetMintAAddress &&
-        pool.mintB.address.toLowerCase() === mintBAddress.toLowerCase(),
+        pool.mintA?.address === targetMintAAddress &&
+        pool.mintB?.address.toLowerCase() === mintBAddress.toLowerCase(),
     );
   };
+
+  // fetchPoolInfos = async (mint?: string) => {
+  //   try {
+  //     const response = await this.httpService.axiosRef.get(
+  //       `https://api.sega.so/api/pools/info/list?page=1&pageSize=10`,
+  //     );
+  //     const pools = response.data.data.data;
+  //     if (pools && pools.length > 0) {
+  //       if (mint) {
+  //         return this.filterPoolsByMintAddress(pools, mint);
+  //       }
+  //       return pools;
+  //     }
+  //     return;
+  //   } catch (error) {
+  //     console.log(error);
+  //   }
+  // };
+
+  // filterPoolsByMintAddress = (pools, mintBAddress) => {
+  //   const targetMintAAddress = 'So11111111111111111111111111111111111111112';
+
+  //   return pools.filter(
+  //     (pool) =>
+  //       pool.mintA.address === targetMintAAddress &&
+  //       pool.mintB.address.toLowerCase() === mintBAddress.toLowerCase(),
+  //   );
+  // };
 }

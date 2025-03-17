@@ -8,6 +8,7 @@ interface Token {
   name: string;
   decimals: number;
 }
+
 const formatNumber = (num: number): string => {
   if (num >= 1_000_000_000) {
     return (num / 1_000_000_000).toFixed(1) + 'B'; // Billion
@@ -16,44 +17,28 @@ const formatNumber = (num: number): string => {
   } else if (num >= 1_000) {
     return (num / 1_000).toFixed(1) + 'K'; // Thousand
   } else {
-    return num.toString(); // Return the number as is if it's less than 1,000
+    return num.toFixed(4); // Return the number as is if it's less than 1,000
   }
 };
 
-// const formatTime = (seconds) => {
-//   const days = Math.floor(seconds / (24 * 60 * 60));
-//   const hours = Math.floor((seconds % (24 * 60 * 60)) / (60 * 60));
-//   const minutes = Math.floor((seconds % (60 * 60)) / 60);
-//   const secs = seconds % 60;
-
-//   let timeString = '';
-
-//   if (days > 0) {
-//     timeString += `${days}D `;
-//   }
-
-//   if (hours > 0) {
-//     timeString += `${hours}h `;
-//   }
-
-//   if (minutes > 0) {
-//     timeString += `${minutes}m `;
-//   }
-
-//   if (secs > 0 || (days === 0 && hours === 0 && minutes === 0)) {
-//     timeString += `${secs}s`;
-//   }
-
-//   return timeString.trim();
-// };
+const formatPoolDetails = (
+  pools: { liquidity: number; createdAt: string; source: string }[],
+) => {
+  return pools
+    .map(
+      (pool) =>
+        `🔄 Dex: ${pool.source} | Liquidity: $${formatNumber(pool.liquidity)}`,
+    )
+    .join('\n');
+};
 
 export const buyTokenMarkup = async (
   token: Token,
   price: string,
-  poolDetails: any,
+  poolDetails: { liquidity: number; createdAt: string; source: string }[],
 ) => {
   return {
-    message: `<a href="${process.env.SONIC_SCAN_URL}address/${token.address}">${token.symbol} | ${token.name}</a>\n<code>${token.address}</code>\n\n🔄 Dex: SEGA / WhiteList ✅\n✅Liquidity: $${formatNumber(poolDetails.liquidity)}\n\nPrice: $${price || 0}\n\nTo buy press one of the buttons below.`,
+    message: `<a href="${process.env.SONIC_SCAN_URL}address/${token.address}">${token.symbol} | ${token.name}</a>\n<code>${token.address}</code>\n\n${formatPoolDetails(poolDetails)}\n\nPrice: $${price || 0}\n\nTo buy, press one of the buttons below.`,
     keyboard: [
       [
         {
@@ -126,7 +111,7 @@ export const buyTokenMarkup = async (
       ],
       [
         {
-          text: 'setting',
+          text: 'Setting',
           callback_data: JSON.stringify({
             command: '/settings',
             language: 'english',

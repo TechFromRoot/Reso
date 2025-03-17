@@ -15,7 +15,7 @@ export class ResoAgentController {
     );
   }
 
-  @Post('create-token')
+  @Post()
   createToken(
     @Body()
     payload: {
@@ -36,6 +36,14 @@ export class ResoAgentController {
       payload.decimals,
       payload.initialSupply,
       payload.chatId,
+    );
+  }
+
+  @Post('bot-buy')
+  buyToken(@Body() payload: { mint: string; amount: string }) {
+    return this.resoService.compareSellPriceCompute(
+      payload.mint,
+      payload.amount,
     );
   }
 }

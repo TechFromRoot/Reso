@@ -6,25 +6,227 @@ import {
   PublicKey,
   Keypair,
   VersionedTransaction,
+  Transaction,
+  TransactionMessage,
 } from '@solana/web3.js';
 import bs58 from 'bs58';
-import { getOrCreateAssociatedTokenAccount } from '@solana/spl-token';
+import {
+  getOrCreateAssociatedTokenAccount,
+  TOKEN_2022_PROGRAM_ID,
+} from '@solana/spl-token';
 import { SonicAgentKit } from '@sendaifun/sonic-agent-kit';
 import { InjectModel } from '@nestjs/mongoose';
-import { Transaction } from 'src/database/schemas/transaction.schema';
+import { Transaction as dbTransaction } from 'src/database/schemas/transaction.schema';
 import { Model } from 'mongoose';
 import { WalletService } from 'src/wallet/wallet.service';
 
 @Injectable()
 export class ResoAgentService {
   private readonly SEGA_BASE_URL = 'https://api.sega.so/';
+  private readonly SOLAR_BASE_URL = 'https://sonicapi.solarstudios.co';
 
   constructor(
     private readonly httpService: HttpService,
     private readonly walletService: WalletService,
-    @InjectModel(Transaction.name)
-    private readonly TransactionModel: Model<Transaction>,
+    @InjectModel(dbTransaction.name)
+    private readonly TransactionModel: Model<dbTransaction>,
   ) {}
+
+  // https://sonicapi.solarstudios.co/transaction/swap-base-in
+  //https://api.solarstudios.co/mint/list
+  // https://sonicapi.solarstudios.co/mint/price?mints=mrujEYaN1oyQXDHeYNxBYpxWKVkQ2XsGxfznpifu4aL
+  // https://sonicapi.solarstudios.co/check-tx
+  // https://sonicapi.solarstudios.co/send-tx
+  // https://sonicapi.solarstudios.co/transaction/swap-base-in
+
+  async compareBuyPriceCompute(
+    tokenMint: string,
+    amount: string,
+  ): Promise<any> {
+    const inputMint = 'So11111111111111111111111111111111111111112';
+    const outputMint = tokenMint;
+    const amountInLamportsSega = `${Math.floor(Number(amount) * 1000000000)}`;
+    const amountInLamportsSolar = `${Math.floor(Number(amount) * 10 ** 7)}`;
+    const slippageBps = '10';
+    const txVersion = 'V0';
+    const swapType = 'swap-base-in';
+
+    const swapComputeUrlSegaDex = `${this.SEGA_BASE_URL}swap/compute/${swapType}?inputMint=${inputMint}&outputMint=${outputMint}&amount=${amountInLamportsSega}&slippageBps=${slippageBps}&txVersion=${txVersion}`;
+    const swapComputeUrlSolarDex = `${this.SOLAR_BASE_URL}/compute/${swapType}?inputMint=${inputMint}&outputMint=${outputMint}&amount=${Number(amountInLamportsSolar) * 100}&slippageBps=${slippageBps}&txVersion=${txVersion}`;
+
+    let segaResult = null;
+    let solarResult = null;
+    let segaError = null;
+    let solarError = null;
+
+    // Try Sega request
+    try {
+      const swapComputeSegaDex = await firstValueFrom(
+        this.httpService.get(swapComputeUrlSegaDex),
+      );
+      segaResult = swapComputeSegaDex.data;
+    } catch (error) {
+      console.error('Sega request failed:', error);
+      segaError = error;
+    }
+
+    // Try Solar request
+    try {
+      const swapComputeSolarDex = await firstValueFrom(
+        this.httpService.get(swapComputeUrlSolarDex),
+      );
+      solarResult = swapComputeSolarDex.data;
+    } catch (error) {
+      console.error('Solar request failed:', error);
+      solarError = error;
+    }
+
+    // If both requests failed, throw an error
+    if (segaError && solarError) {
+      throw new Error('Both Sega and Solar swap requests failed');
+    }
+
+    let optimal;
+    if (segaResult && solarResult) {
+      // check stables
+      if (
+        outputMint.toLocaleLowerCase() ===
+          `HbDgpvHVxeNSRCGEUFvapCYmtYfqxexWcCbxtYecruy8`.toLocaleLowerCase() ||
+        outputMint.toLocaleLowerCase() ===
+          `qPzdrTCvxK3bxoh2YoTZtDcGVgRUwm37aQcC3abFgBy`.toLocaleLowerCase()
+      ) {
+        const segaOutput = parseFloat(segaResult.data.outputAmount) / 10 ** 9;
+        const solarOutput = parseFloat(solarResult.data.outputAmount) / 10 ** 6;
+        if (segaOutput >= solarOutput) {
+          optimal = { swapCompute: segaResult, dex: 'SEGA' };
+        } else {
+          optimal = { swapCompute: solarResult, dex: 'SOLAR' };
+        }
+      }
+      const segaOutput = parseFloat(segaResult.data.outputAmount) / 10 ** 9;
+      const solarOutput = parseFloat(solarResult.data.outputAmount) / 10 ** 9;
+      // console.log(segaOutput, solarOutput);
+      if (segaOutput >= solarOutput) {
+        optimal = { swapCompute: segaResult, dex: 'SEGA' };
+      } else {
+        optimal = { swapCompute: solarResult, dex: 'SOLAR' };
+      }
+    } else {
+      if (segaResult) {
+        optimal = { swapCompute: segaResult, dex: 'SEGA' };
+      } else {
+        if (
+          outputMint.toLocaleLowerCase() ===
+            `HbDgpvHVxeNSRCGEUFvapCYmtYfqxexWcCbxtYecruy8`.toLocaleLowerCase() ||
+          outputMint.toLocaleLowerCase() ===
+            `qPzdrTCvxK3bxoh2YoTZtDcGVgRUwm37aQcC3abFgBy`.toLocaleLowerCase()
+        ) {
+          optimal = { swapCompute: solarResult, dex: 'SOLAR' };
+        } else {
+          optimal = { swapCompute: solarResult, dex: 'SOLAR' };
+        }
+      }
+    }
+    // Return whatever results we have
+    return {
+      ...optimal,
+    };
+  }
+
+  async compareSellPriceCompute(
+    tokenMint: string,
+    amount: string,
+  ): Promise<any> {
+    const inputMint = tokenMint;
+    const outputMint = 'So11111111111111111111111111111111111111112';
+    const amountInLamportsSega = `${Math.floor(Number(amount) * 1000000000)}`;
+    const amountInLamportsSolar = `${Math.floor(Number(amount) * 10 ** 7)}`;
+    const slippageBps = '10';
+    const txVersion = 'V0';
+    const swapType = 'swap-base-in';
+
+    const swapComputeUrlSegaDex = `${this.SEGA_BASE_URL}swap/compute/${swapType}?inputMint=${inputMint}&outputMint=${outputMint}&amount=${amountInLamportsSega}&slippageBps=${slippageBps}&txVersion=${txVersion}`;
+    const swapComputeUrlSolarDex = `${this.SOLAR_BASE_URL}/compute/${swapType}?inputMint=${inputMint}&outputMint=${outputMint}&amount=${Number(amountInLamportsSolar) * 100}&slippageBps=${slippageBps}&txVersion=${txVersion}`;
+
+    let segaResult = null;
+    let solarResult = null;
+    let segaError = null;
+    let solarError = null;
+
+    // Try Sega request
+    try {
+      const swapComputeSegaDex = await firstValueFrom(
+        this.httpService.get(swapComputeUrlSegaDex),
+      );
+      segaResult = swapComputeSegaDex.data;
+    } catch (error) {
+      console.error('Sega request failed:', error);
+      segaError = error;
+    }
+
+    // Try Solar request
+    try {
+      const swapComputeSolarDex = await firstValueFrom(
+        this.httpService.get(swapComputeUrlSolarDex),
+      );
+      solarResult = swapComputeSolarDex.data;
+    } catch (error) {
+      console.error('Solar request failed:', error);
+      solarError = error;
+    }
+
+    // If both requests failed, throw an error
+    if (segaError && solarError) {
+      throw new Error('Both Sega and Solar swap requests failed');
+    }
+
+    let optimal;
+    if (segaResult && solarResult) {
+      // check stables
+      if (
+        outputMint.toLocaleLowerCase() ===
+          `HbDgpvHVxeNSRCGEUFvapCYmtYfqxexWcCbxtYecruy8`.toLocaleLowerCase() ||
+        outputMint.toLocaleLowerCase() ===
+          `qPzdrTCvxK3bxoh2YoTZtDcGVgRUwm37aQcC3abFgBy`.toLocaleLowerCase()
+      ) {
+        const segaOutput = parseFloat(segaResult.data.outputAmount) / 10 ** 9;
+        const solarOutput = parseFloat(solarResult.data.outputAmount) / 10 ** 6;
+        if (segaOutput >= solarOutput) {
+          optimal = { swapCompute: segaResult, dex: 'SEGA' };
+        } else {
+          optimal = { swapCompute: solarResult, dex: 'SOLAR' };
+        }
+      }
+      const segaOutput = parseFloat(segaResult.data.outputAmount) / 10 ** 9;
+      const solarOutput = parseFloat(solarResult.data.outputAmount) / 10 ** 9;
+      // console.log(segaOutput, solarOutput);
+      if (segaOutput >= solarOutput) {
+        optimal = { swapCompute: segaResult, dex: 'SEGA' };
+      } else {
+        optimal = { swapCompute: solarResult, dex: 'SOLAR' };
+      }
+    } else {
+      if (segaResult) {
+        optimal = { swapCompute: segaResult, dex: 'SEGA' };
+      } else {
+        if (
+          outputMint.toLocaleLowerCase() ===
+            `HbDgpvHVxeNSRCGEUFvapCYmtYfqxexWcCbxtYecruy8`.toLocaleLowerCase() ||
+          outputMint.toLocaleLowerCase() ===
+            `qPzdrTCvxK3bxoh2YoTZtDcGVgRUwm37aQcC3abFgBy`.toLocaleLowerCase()
+        ) {
+          optimal = { swapCompute: solarResult, dex: 'SOLAR' };
+        } else {
+          optimal = { swapCompute: solarResult, dex: 'SOLAR' };
+        }
+      }
+    }
+    // Return whatever results we have
+    return {
+      ...optimal,
+      solarResult,
+    };
+  }
 
   async botBuyToken(
     privateKey: string,
@@ -48,23 +250,23 @@ export class ResoAgentService {
         return 'Insufficient balance.';
       }
 
-      const amountInLamports = `${Math.floor(Number(amount) * 1000000000)}`;
-      const slippageBps = '10';
-      const txVersion = 'V0';
-      const swapType = 'swap-base-in';
-
-      const swapComputeUrl = `${this.SEGA_BASE_URL}swap/compute/${swapType}?inputMint=${inputMint}&outputMint=${outputMint}&amount=${amountInLamports}&slippageBps=${slippageBps}&txVersion=${txVersion}`;
-      const swapCompute = await firstValueFrom(
-        this.httpService.get(swapComputeUrl),
+      const optimalCompute = await this.compareBuyPriceCompute(
+        outputMint,
+        amount,
       );
+      const swapType = 'swap-base-in';
+      const txVersion = 'V0';
+
+      if (!optimalCompute) {
+        return 'No available pool.';
+      }
 
       const connection = new Connection(
         `https://rpc.mainnet-alpha.sonic.game/`,
-        {
-          commitment: 'confirmed',
-        },
+        { commitment: 'confirmed' },
       );
 
+      // Ensure ATAs exist for both input and output tokens
       await getOrCreateAssociatedTokenAccount(
         connection,
         userAccount,
@@ -72,41 +274,75 @@ export class ResoAgentService {
         userAddress,
       );
 
-      const swapUrl = `${this.SEGA_BASE_URL}swap/transaction/${swapType}`;
-
-      const swapTrx = await firstValueFrom(
-        this.httpService.post(swapUrl, {
-          wallet: userAddress,
-          computeUnitPriceMicroLamports: '100',
-          swapResponse: swapCompute.data,
-          txVersion,
-          wrapSol: true,
-          unwrapSol: false,
-          outputAccount: userAddress,
-        }),
+      // Create ATA for outputMint (Token-2022)
+      const outputATA = await getOrCreateAssociatedTokenAccount(
+        connection,
+        userAccount,
+        new PublicKey(outputMint),
+        userAddress,
+        false, // allowOwnerOffCurve: false (default)
+        'confirmed',
+        {}, // Default options
+        TOKEN_2022_PROGRAM_ID, // Specify Token-2022 Program ID
       );
 
-      // Decode the base64 transaction
+      let swapTrx;
+      if (optimalCompute.dex === `SEGA`) {
+        const swapUrl = `${this.SEGA_BASE_URL}swap/transaction/${swapType}`;
+        swapTrx = await firstValueFrom(
+          this.httpService.post(swapUrl, {
+            wallet: userAddress,
+            computeUnitPriceMicroLamports: '100',
+            swapResponse: optimalCompute.swapCompute.data,
+            txVersion,
+            wrapSol: true,
+            unwrapSol: false,
+            outputAccount: outputATA.address, // Use ATA instead of userAddress
+          }),
+        );
+      } else {
+        const swapUrl = `${this.SOLAR_BASE_URL}/transaction/${swapType}`;
+        swapTrx = await firstValueFrom(
+          this.httpService.post(swapUrl, {
+            wallet: userAddress,
+            computeUnitPriceMicroLamports: '100',
+            swapResponse: optimalCompute.swapCompute,
+            txVersion,
+            wrapSol: true,
+            unwrapSol: false,
+            outputAccount: outputATA.address, // Use ATA instead of userAddress
+          }),
+        );
+      }
+
       const txBuffer = Buffer.from(swapTrx.data.data[0].transaction, 'base64');
+      const latestBlockhash = await connection.getLatestBlockhash();
+      const blockhash = latestBlockhash.blockhash;
+      const lastValidBlockHeight = latestBlockhash.lastValidBlockHeight;
 
-      // Deserialize into a VersionedTransaction
-      const transaction = VersionedTransaction.deserialize(txBuffer);
+      let transaction: VersionedTransaction;
+      try {
+        transaction = VersionedTransaction.deserialize(txBuffer);
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      } catch (error) {
+        const legacyTx = Transaction.from(txBuffer);
+        transaction = new VersionedTransaction(
+          new TransactionMessage({
+            payerKey: userAddress,
+            recentBlockhash: blockhash,
+            instructions: legacyTx.instructions,
+          }).compileToV0Message(),
+        );
+      }
 
-      // Set recent blockhash and fee payer
-      const { blockhash, lastValidBlockHeight } =
-        await connection.getLatestBlockhash();
       transaction.message.recentBlockhash = blockhash;
-
-      // Sign the transaction
       transaction.sign([userAccount]);
 
-      // Send the signed transaction
       const signature = await connection.sendTransaction(transaction, {
         skipPreflight: false,
         preflightCommitment: 'confirmed',
       });
 
-      // Confirm the transaction
       const confirmation = await connection.confirmTransaction({
         signature,
         blockhash,
@@ -116,28 +352,31 @@ export class ResoAgentService {
       if (confirmation.value.err) {
         throw new Error('Transaction failed');
       }
+
       const inputTokenDetails = await this.getTokenDetails(
-        swapCompute.data.inputMint,
+        optimalCompute.swapCompute.data.inputMint,
       );
       const outputTokenDetails = await this.getTokenDetails(
-        swapCompute.data.outputMint,
+        optimalCompute.swapCompute.data.outputMint,
       );
       const tokenInPrice: any = await this.fetchSupportedTokenPrice(
-        swapCompute.data.data.inputMint,
+        optimalCompute.swapCompute.data.inputMint,
       );
+
       const transactionDetails = new this.TransactionModel({
         chatId: chatId,
-        TokenInAddress: swapCompute.data.data.inputMint,
+        TokenInAddress: optimalCompute.swapCompute.data.inputMint,
         TokenInSymbol: inputTokenDetails.symbol,
         TokenInName: inputTokenDetails.name,
-        TokenInAmount: swapCompute.data.data.inputAmount,
+        TokenInAmount: optimalCompute.swapCompute.data.inputAmount,
         TokenInPrice: tokenInPrice,
-        TokenOutAddress: swapCompute.data.data.outputMint,
+        TokenOutAddress: optimalCompute.swapCompute.data.outputMint,
         TokenOutSymbol: outputTokenDetails.symbol,
         TokenOutName: outputTokenDetails.name,
-        TokenOutAmount: swapCompute.data.data.outputAmount,
+        TokenOutAmount: optimalCompute.swapCompute.data.outputAmount,
         hash: signature,
       });
+
       await transactionDetails.save();
       return `https://explorer.sonic.game/tx/${signature}?cluster=mainnet-alpha`;
     } catch (error: any) {
@@ -174,15 +413,16 @@ export class ResoAgentService {
         return 'Insufficient balance.';
       }
 
-      const amountInLamports = `${Math.floor(Number(amount) * 1000000000)}`;
-      const slippageBps = '10';
-      const txVersion = 'V0';
-      const swapType = 'swap-base-in';
-
-      const swapComputeUrl = `${this.SEGA_BASE_URL}swap/compute/${swapType}?inputMint=${inputMint}&outputMint=${outputMint}&amount=${amountInLamports}&slippageBps=${slippageBps}&txVersion=${txVersion}`;
-      const swapCompute = await firstValueFrom(
-        this.httpService.get(swapComputeUrl),
+      const optimalCompute = await this.compareSellPriceCompute(
+        inputMint,
+        `${amount}`,
       );
+      const swapType = 'swap-base-in';
+      const txVersion = 'V0';
+
+      if (!optimalCompute) {
+        return 'No available pool.';
+      }
 
       const connection = new Connection(
         `https://rpc.mainnet-alpha.sonic.game/`,
@@ -191,41 +431,63 @@ export class ResoAgentService {
         },
       );
 
-      const swapUrl = `${this.SEGA_BASE_URL}swap/transaction/${swapType}`;
+      let swapTrx;
+      if (optimalCompute.dex === `SEGA`) {
+        const swapUrl = `${this.SEGA_BASE_URL}swap/transaction/${swapType}`;
+        swapTrx = await firstValueFrom(
+          this.httpService.post(swapUrl, {
+            wallet: userAddress,
+            computeUnitPriceMicroLamports: '100',
+            swapResponse: optimalCompute.swapCompute,
+            txVersion,
+            wrapSol: false,
+            unwrapSol: true,
+            outputAccount: userAddress,
+          }),
+        );
+      } else {
+        const swapUrl = `${this.SOLAR_BASE_URL}/transaction/${swapType}`;
+        swapTrx = await firstValueFrom(
+          this.httpService.post(swapUrl, {
+            wallet: userAddress,
+            computeUnitPriceMicroLamports: '100',
+            swapResponse: optimalCompute.swapCompute,
+            txVersion,
+            wrapSol: false,
+            unwrapSol: true,
+            outputAccount: userAddress,
+          }),
+        );
+      }
 
-      const swapTrx = await firstValueFrom(
-        this.httpService.post(swapUrl, {
-          wallet: userAddress,
-          computeUnitPriceMicroLamports: '100',
-          swapResponse: swapCompute.data,
-          txVersion,
-          wrapSol: false,
-          unwrapSol: true,
-          outputAccount: userAddress,
-        }),
-      );
-
-      // Decode the base64 transaction
       const txBuffer = Buffer.from(swapTrx.data.data[0].transaction, 'base64');
+      const latestBlockhash = await connection.getLatestBlockhash();
+      const blockhash = latestBlockhash.blockhash;
+      const lastValidBlockHeight = latestBlockhash.lastValidBlockHeight;
 
-      // Deserialize into a VersionedTransaction
-      const transaction = VersionedTransaction.deserialize(txBuffer);
+      let transaction: VersionedTransaction;
+      try {
+        transaction = VersionedTransaction.deserialize(txBuffer);
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      } catch (error) {
+        const legacyTx = Transaction.from(txBuffer);
+        transaction = new VersionedTransaction(
+          new TransactionMessage({
+            payerKey: userAddress,
+            recentBlockhash: blockhash,
+            instructions: legacyTx.instructions,
+          }).compileToV0Message(),
+        );
+      }
 
-      // Set recent blockhash and fee payer
-      const { blockhash, lastValidBlockHeight } =
-        await connection.getLatestBlockhash();
       transaction.message.recentBlockhash = blockhash;
-
-      // Sign the transaction
       transaction.sign([userAccount]);
 
-      // Send the signed transaction
       const signature = await connection.sendTransaction(transaction, {
         skipPreflight: false,
         preflightCommitment: 'confirmed',
       });
 
-      // Confirm the transaction
       const confirmation = await connection.confirmTransaction({
         signature,
         blockhash,
@@ -235,20 +497,21 @@ export class ResoAgentService {
       if (confirmation.value.err) {
         throw new Error('Transaction failed');
       }
+
       const tokenInPrice: any = await this.fetchSupportedTokenPrice(
-        swapCompute.data.data.inputMint,
+        optimalCompute.swapCompute.data.inputMint,
       );
       const transactionDetails = new this.TransactionModel({
         chatId: chatId,
-        TokenInAddress: swapCompute.data.data.inputMint,
+        TokenInAddress: optimalCompute.swapCompute.data.inputMint,
         TokenInSymbol: inputTokenDetails.symbol,
         TokenInName: inputTokenDetails.name,
-        TokenInAmount: swapCompute.data.data.inputAmount,
+        TokenInAmount: optimalCompute.swapCompute.data.inputAmount,
         TokenInPrice: tokenInPrice,
-        TokenOutAddress: swapCompute.data.data.outputMint,
+        TokenOutAddress: optimalCompute.swapCompute.data.outputMint,
         TokenOutSymbol: outputTokenDetails.symbol,
         TokenOutName: outputTokenDetails.name,
-        TokenOutAmount: swapCompute.data.data.outputAmount,
+        TokenOutAmount: optimalCompute.swapCompute.data.outputAmount,
         hash: signature,
       });
       await transactionDetails.save();
@@ -310,7 +573,6 @@ export class ResoAgentService {
       const swapCompute = await firstValueFrom(
         this.httpService.get(swapComputeUrl),
       );
-      console.log(swapCompute);
 
       const connection = new Connection(
         `https://rpc.mainnet-alpha.sonic.game/`,
@@ -473,7 +735,6 @@ export class ResoAgentService {
 
   async getTokenDetails(address: string) {
     try {
-      console.log(address);
       const url = `${this.SEGA_BASE_URL}api/mint/list`;
       const response = await firstValueFrom(this.httpService.get(url));
 
@@ -551,8 +812,7 @@ export class ResoAgentService {
     try {
       const sonicAgentKit = new SonicAgentKit(
         pk,
-        'https://api.testnet.sonic.game/',
-        // "https://rpc.mainnet-alpha.sonic.game/",
+        'https://rpc.mainnet-alpha.sonic.game/',
         {
           OPENAI_API_KEY: process.env.OPENAI_API_KEY,
         },

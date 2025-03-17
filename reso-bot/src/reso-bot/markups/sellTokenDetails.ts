@@ -16,19 +16,30 @@ const formatNumber = (num: number): string => {
   } else if (num >= 1_000) {
     return (num / 1_000).toFixed(1) + 'K'; // Thousand
   } else {
-    return num.toString(); // Return the number as is if it's less than 1,000
+    return num.toFixed(4); // Return the number as is if it's less than 1,000
   }
+};
+
+const formatPoolDetails = (
+  pools: { liquidity: number; createdAt: string; source: string }[],
+) => {
+  return pools
+    .map(
+      (pool) =>
+        `🔄 Dex: ${pool.source} | Liquidity: $${formatNumber(pool.liquidity)}`,
+    )
+    .join('\n');
 };
 
 export const sellTokenMarkup = async (
   token: Token,
   price: string,
-  poolDetails: any,
+  poolDetails: { liquidity: number; createdAt: string; source: string }[],
   balance: any,
   solBalance: any,
 ) => {
   return {
-    message: `<a href="${process.env.SONIC_SCAN_URL}address/${token.address}">${token.symbol} | ${token.name}</a>\n<code>${token.address}</code>\n\n🔄 Dex: SEGA / WhiteList ✅\n✅Liquidity: $${formatNumber(poolDetails.liquidity)}\n\nPrice: $${price || 0}\n\nBalance: ${formatNumber(parseFloat(balance))}\nSOL balance: ${formatNumber(parseFloat(solBalance))}`,
+    message: `<a href="${process.env.SONIC_SCAN_URL}address/${token.address}">${token.symbol} | ${token.name}</a>\n<code>${token.address}</code>\n\n${formatPoolDetails(poolDetails)}\n\nPrice: $${price || 0}\n\nBalance: ${formatNumber(parseFloat(balance))}\nSOL balance: ${formatNumber(parseFloat(solBalance))}`,
     keyboard: [
       [
         {
