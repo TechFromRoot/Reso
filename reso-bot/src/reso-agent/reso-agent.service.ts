@@ -13,6 +13,7 @@ import { SonicAgentKit } from '@sendaifun/sonic-agent-kit';
 import { InjectModel } from '@nestjs/mongoose';
 import { Transaction } from 'src/database/schemas/transaction.schema';
 import { Model } from 'mongoose';
+import { WalletService } from 'src/wallet/wallet.service';
 
 @Injectable()
 export class ResoAgentService {
@@ -20,6 +21,7 @@ export class ResoAgentService {
 
     constructor(
         private readonly httpService: HttpService,
+        private readonly walletService: WalletService,
         @InjectModel(Transaction.name)
         private readonly TransactionModel: Model<Transaction>,
     ) { }
@@ -34,6 +36,18 @@ export class ResoAgentService {
             const inputMint = 'So11111111111111111111111111111111111111112';
             const outputMint = tokenMint;
 
+            const userAccount = Keypair.fromSecretKey(bs58.decode(privateKey));
+            const userAddress = userAccount.publicKey;
+
+            const { balance } = await this.walletService.getSolBalance(
+                String(userAddress),
+                process.env.SONIC_RPC
+            );
+
+            if (balance < parseFloat(amount)) {
+                return "Insufficient balance.";
+            }
+
             const amountInLamports = `${Number(amount) * 1000000000}`;
             const slippageBps = '10';
             const txVersion = 'V0';
@@ -43,10 +57,6 @@ export class ResoAgentService {
             const swapCompute = await firstValueFrom(
                 this.httpService.get(swapComputeUrl),
             );
-            console.log(swapCompute.data);
-
-            const userAccount = Keypair.fromSecretKey(bs58.decode(privateKey));
-            const userAddress = userAccount.publicKey;
 
             const connection = new Connection(
                 `https://rpc.mainnet-alpha.sonic.game/`,
@@ -140,14 +150,47 @@ export class ResoAgentService {
         try {
             const { fromToken, toToken, amount } = this.processPrompt(prompt);
 
-            if (!this.isPoolAvailable(fromToken, toToken)) {
+            const [inputMint, outputMint, isAvailable] = await Promise.all([
+                this.getMintAddress(fromToken),
+                this.getMintAddress(toToken),
+                this.isPoolAvailable(fromToken, toToken)
+            ]);
+
+            if (!isAvailable) {
                 return "Pool is not available.";
             }
 
-            const [inputMint, outputMint] = await Promise.all([
-                this.getMintAddress(fromToken),
-                this.getMintAddress(toToken),
-            ]);
+            const userAccount = Keypair.fromSecretKey(bs58.decode(privateKey));
+            const userAddress = userAccount.publicKey;
+
+            let inputBalance;
+            const token = await this.getTokenDetails(inputMint);
+
+            if (
+                inputMint ===
+                'So11111111111111111111111111111111111111112'
+            ) {
+                const { balance } = await this.walletService.getSolBalance(
+                    String(userAddress),
+                    process.env.SONIC_RPC
+                );
+
+                inputBalance = balance;
+            } else {
+                const { balance } =
+                    await this.walletService.getToken2022Balance(
+                        String(userAddress),
+                        inputMint,
+                        process.env.SONIC_RPC,
+                        token.decimal,
+                        token.programId
+                    );
+
+                inputBalance = balance;
+            }
+            if (inputBalance < amount) {
+                return "Insufficient balance.";
+            }
 
             const amountInLamports = `${amount * 1000000000}`;
             const slippageBps = '10';
@@ -158,10 +201,6 @@ export class ResoAgentService {
             const swapCompute = await firstValueFrom(
                 this.httpService.get(swapComputeUrl),
             );
-            console.log(swapCompute.data);
-
-            const userAccount = Keypair.fromSecretKey(bs58.decode(privateKey));
-            const userAddress = userAccount.publicKey;
 
             const connection = new Connection(
                 `https://rpc.mainnet-alpha.sonic.game/`,
@@ -341,6 +380,7 @@ export class ResoAgentService {
                 symbol: tokenData.symbol,
                 name: tokenData.name,
                 decimal: tokenData.decimals,
+                programId: tokenData.programId
             };
         } catch (error: any) {
             console.error(
@@ -359,7 +399,7 @@ export class ResoAgentService {
             const price = Object.values(response.data.data)[0];
             return price;
         } catch (error) {
-            console.log(error);
+            console.error(error);
         }
     };
 
@@ -367,10 +407,16 @@ export class ResoAgentService {
         const url = `${this.SEGA_BASE_URL}api/pools/info/list?page=1&pageSize=20`;
         const pools = await firstValueFrom(this.httpService.get(url));
 
+        if (token1.toLowerCase() === "sol") {
+            token1 = "WSOL";
+        } else if (token2.toLowerCase() === "sol") {
+            token2 = "WSOL";
+        }
+
         return pools.data.data.data.some(
             (pool) =>
-                (pool.mintA.symbol.toLowerCase() === token1.toLowerCase() && pool.mintB.symbol.toLowerCase() === token2.toLowerCase()) ||
-                (pool.mintA.symbol.toLowerCase() === token2.toLowerCase() && pool.mintB.symbol.toLowerCase() === token1.toLowerCase())
+                (pool.mintA.symbol.trim().toLowerCase() === token1.trim().toLowerCase() && pool.mintB.symbol.trim().toLowerCase() === token2.trim().toLowerCase()) ||
+                (pool.mintA.symbol.trim().toLowerCase() === token2.trim().toLowerCase() && pool.mintB.symbol.trim().toLowerCase() === token1.trim().toLowerCase())
         );
     }
 
@@ -383,7 +429,6 @@ export class ResoAgentService {
         initialSupply: number,
         chatId: number,
     ) {
-        console.log(chatId);
         try {
             const sonicAgentKit = new SonicAgentKit(
                 pk,
@@ -402,7 +447,6 @@ export class ResoAgentService {
                 initialSupply,
             );
 
-            console.log(token);
             return token.mint.toString();
         } catch (error: any) {
             console.error(`Error creating token:`, error.message);

@@ -7,6 +7,7 @@ import {
   Transaction,
   TransactionSchema,
 } from 'src/database/schemas/transaction.schema';
+import { WalletModule } from 'src/wallet/wallet.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import {
     MongooseModule.forFeature([
       { name: Transaction.name, schema: TransactionSchema },
     ]),
+    WalletModule
   ],
   providers: [ResoAgentService],
   controllers: [ResoAgentController],
