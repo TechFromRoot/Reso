@@ -1,9 +1,10 @@
 import * as dotenv from 'dotenv';
 dotenv.config();
-export const manageAssetMarkup = async (tokens: any) => {
-  let message = `<b>Assets:</b>\n\n`;
+export const manageAssetMarkup = async (tokens: any, solBalance) => {
+  let message = `<b>Assets:</b>\n\nBalance: ${solBalance} SOL\n\n`;
 
   for (const token of tokens) {
+    if (token.name === 'SOL') continue; // Skip SOL token
     message += `➤ <a href="${process.env.BOT_URL}?start=position_${token.address}">/ ${token.name}</a>\nValue: ${token.balance} <b>${token.name}</b>\n\n`;
   }
 

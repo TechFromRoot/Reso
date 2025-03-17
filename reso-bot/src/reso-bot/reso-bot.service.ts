@@ -1153,7 +1153,13 @@ export class ResoBotService {
           return this.showResetWalletWarning(chatId);
 
         case '/manageAsset':
-          return this.showAsset(chatId);
+          if (!user.svmWalletAddress) {
+            return await this.resoBot.sendMessage(
+              query.message.chat.id,
+              `You don't have a wallet connected`,
+            );
+          }
+          return this.showAsset(chatId, user.svmWalletAddress);
 
         case '/confirmReset':
           // delete any existing session if any
@@ -1552,11 +1558,15 @@ export class ResoBotService {
     }
   };
 
-  showAsset = async (chatId: TelegramBot.ChatId) => {
+  showAsset = async (chatId: TelegramBot.ChatId, walletAddress: string) => {
     try {
+      const { balance } = await this.walletService.getSolBalance(
+        walletAddress,
+        process.env.SONIC_RPC,
+      );
       const allAssetBalance = await this.showBalance(chatId, false);
       if (allAssetBalance) {
-        const showAsset = await manageAssetMarkup(allAssetBalance);
+        const showAsset = await manageAssetMarkup(allAssetBalance, balance);
         if (showAsset) {
           const replyMarkup = { inline_keyboard: showAsset.keyboard };
 
